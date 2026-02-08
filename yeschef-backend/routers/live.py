@@ -1,8 +1,10 @@
 import os
 import json
+import time
+import collections
 from uuid import uuid4
 from datetime import datetime
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from livekit.api import AccessToken, VideoGrants, LiveKitAPI, CreateRoomRequest
 
 from schemas import LiveTokenRequest, LiveTokenResponse, SessionSummaryResponse
@@ -10,18 +12,33 @@ from dependencies import get_supabase_client, get_gemini_client
 
 router = APIRouter(prefix="/live", tags=["live"])
 
+# ── Rate limiter for token generation ──
+_token_rate_window = 60
+_token_rate_max = int(os.environ.get("TOKEN_RATE_LIMIT", "3"))  # 3 sessions/min per IP
+_token_log: dict[str, list[float]] = collections.defaultdict(list)
+
+def _check_token_rate(client_ip: str) -> None:
+    now = time.time()
+    timestamps = _token_log[client_ip]
+    _token_log[client_ip] = [t for t in timestamps if now - t < _token_rate_window]
+    if len(_token_log[client_ip]) >= _token_rate_max:
+        raise HTTPException(status_code=429, detail="Too many sessions — try again in a minute.")
+    _token_log[client_ip].append(now)
+
 LIVEKIT_URL = os.environ.get("LIVEKIT_URL", "")
 LIVEKIT_API_KEY = os.environ.get("LIVEKIT_API_KEY", "")
 LIVEKIT_API_SECRET = os.environ.get("LIVEKIT_API_SECRET", "")
 
 
 @router.post("/token", response_model=LiveTokenResponse)
-async def create_live_token(req: LiveTokenRequest):
+async def create_live_token(req: LiveTokenRequest, request: Request):
     """
     Generate a LiveKit room token for a cook session.
-    The LiveKit Agent (Phase 2) will auto-join the room and provide
-    Gemini-powered voice guidance.
+    Rate limited: 3 sessions per minute per IP.
     """
+    client_ip = request.client.host if request.client else "unknown"
+    _check_token_rate(client_ip)
+
     if not LIVEKIT_API_KEY or not LIVEKIT_API_SECRET:
         raise HTTPException(status_code=500, detail="LiveKit credentials not configured")
 

@@ -2,7 +2,8 @@ import os
 import json
 import time
 import traceback
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
+import collections
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
 from uuid import uuid4, UUID
 from typing import Optional, List
 from datetime import datetime
@@ -14,6 +15,25 @@ from schemas import (
 from dependencies import get_supabase_client, get_gemini_client
 
 router = APIRouter()
+
+# ── Simple in-memory rate limiter (per-IP, resets on restart) ──
+_rate_limit_window = 60  # seconds
+_rate_limit_max = int(os.environ.get("EXTRACT_RATE_LIMIT", "5"))  # requests per window
+_rate_log: dict[str, list[float]] = collections.defaultdict(list)
+
+def _check_rate_limit(client_ip: str, label: str = "extract") -> None:
+    """Raise 429 if client_ip exceeds rate limit."""
+    now = time.time()
+    key = f"{label}:{client_ip}"
+    timestamps = _rate_log[key]
+    # Prune old entries
+    _rate_log[key] = [t for t in timestamps if now - t < _rate_limit_window]
+    if len(_rate_log[key]) >= _rate_limit_max:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Rate limit exceeded — max {_rate_limit_max} requests per minute. Try again shortly.",
+        )
+    _rate_log[key].append(now)
 
 FIRECRAWL_API_KEY = os.environ.get("FIRECRAWL_API_KEY")
 SUPADATA_API_KEY = os.environ.get("SUPADATA_API_KEY")
@@ -527,11 +547,15 @@ IMPORTANT: The transcript below may contain words with broken spacing (e.g., "Ho
 # ══════════════════════════════════════════════════════════
 
 @router.post("/extract", response_model=JobStatus)
-async def start_extraction(req: ExtractRequest, background_tasks: BackgroundTasks):
+async def start_extraction(req: ExtractRequest, background_tasks: BackgroundTasks, request: Request):
     """
     Submit a URL for recipe extraction. Returns a job ID to poll.
     Supports: YouTube, TikTok, Instagram, and any web URL.
+    Rate limited: 5 requests per minute per IP.
     """
+    client_ip = request.client.host if request.client else "unknown"
+    _check_rate_limit(client_ip, "extract")
+
     url = req.url.strip()
     if not url:
         raise HTTPException(status_code=400, detail="URL is required")
