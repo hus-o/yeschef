@@ -4,6 +4,7 @@ services:
   # --------------------------------------------------------------------------------
   - type: web
     name: yeschef-backend
+    plan: free
     runtime: python
     rootDir: yeschef-backend
     buildCommand: pip install -r requirements.txt
