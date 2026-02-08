@@ -59,7 +59,7 @@ services:
     runtime: static
     rootDir: yeschef-web
     buildCommand: npm install && npm run build
-    staticPublishPath: dist
+    staticPublishPath: ./yeschef-web/dist
     routes:
       - type: rewrite
         source: /*
