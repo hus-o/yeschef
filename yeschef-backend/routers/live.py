@@ -3,7 +3,7 @@ import json
 from uuid import uuid4
 from datetime import datetime
 from fastapi import APIRouter, HTTPException
-from livekit.api import AccessToken, VideoGrants
+from livekit.api import AccessToken, VideoGrants, LiveKitAPI, CreateRoomRequest
 
 from schemas import LiveTokenRequest, LiveTokenResponse, SessionSummaryResponse
 from dependencies import get_supabase_client, get_gemini_client
@@ -37,7 +37,7 @@ async def create_live_token(req: LiveTokenRequest):
     # Create a unique room name
     room_name = f"cook-{req.recipe_id[:8]}-{uuid4().hex[:6]}"
 
-    # Build room metadata (the LiveKit Agent reads this)
+    # Build room metadata (the LiveKit Agent reads this to get recipe context)
     room_metadata = json.dumps({
         "recipe_id": str(recipe["id"]),
         "title": recipe.get("title", ""),
@@ -47,6 +47,27 @@ async def create_live_token(req: LiveTokenRequest):
         "servings": recipe.get("servings", ""),
         "difficulty": recipe.get("difficulty", ""),
     })
+
+    # Create the LiveKit room with metadata BEFORE the participant joins
+    # This ensures the agent can read the recipe context from room.metadata
+    try:
+        lk_api = LiveKitAPI(
+            url=LIVEKIT_URL,
+            api_key=LIVEKIT_API_KEY,
+            api_secret=LIVEKIT_API_SECRET,
+        )
+        await lk_api.room.create_room(
+            CreateRoomRequest(
+                name=room_name,
+                metadata=room_metadata,
+                empty_timeout=600,  # 10 min — keep room alive during cooking
+            )
+        )
+        await lk_api.aclose()
+        print(f"[Live] Created LiveKit room '{room_name}' with recipe metadata")
+    except Exception as e:
+        print(f"[Live] Warning: Could not pre-create room (will be created on join): {e}")
+        # Non-fatal — room auto-creates on first join, but metadata won't be set
 
     # Generate participant token
     token = AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET)
