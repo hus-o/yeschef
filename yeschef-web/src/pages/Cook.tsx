@@ -975,7 +975,7 @@ function CookUI({
           }}
         >
           <VideoTrack
-            trackRef={cameraTrack}
+            trackRef={{ participant: localParticipant, publication: cameraTrack, source: cameraTrack.source }}
             style={{
               width: "100%",
               height: "100%",
