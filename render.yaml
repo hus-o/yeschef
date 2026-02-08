@@ -12,9 +12,9 @@ services:
       - key: PYTHON_VERSION
         value: 3.11.0
       - key: CLIENT_SECRET
-        generateValue: true # Generates secret for Android
+        generateValue: true
       - key: ALLOWED_ORIGINS
-        sync: false # Set to your frontend URL
+        sync: false
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_KEY
@@ -59,7 +59,7 @@ services:
     runtime: static
     rootDir: yeschef-web
     buildCommand: npm install && npm run build
-    staticPublishPath: ./yeschef-web/dist
+    staticPublishPath: ./dist
     routes:
       - type: rewrite
         source: /*
@@ -68,7 +68,4 @@ services:
       - key: NODE_VERSION
         value: 20.10.0
       - key: VITE_API_URL
-        fromService:
-          type: web
-          name: yeschef-backend
-          envVarKey: RENDER_EXTERNAL_URL
+        sync: false
