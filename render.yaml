@@ -1,0 +1,74 @@
+services:
+  # --------------------------------------------------------------------------------
+  # 1. API Backend (FastAPI)
+  # --------------------------------------------------------------------------------
+  - type: web
+    name: yeschef-backend
+    runtime: python
+    rootDir: yeschef-backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: CLIENT_SECRET
+        generateValue: true # Generates secret for Android
+      - key: ALLOWED_ORIGINS
+        sync: false # Set to your frontend URL
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: FIRECRAWL_API_KEY
+        sync: false
+      - key: SUPADATA_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+
+  # --------------------------------------------------------------------------------
+  # 2. LiveKit Background Worker
+  # --------------------------------------------------------------------------------
+  - type: worker
+    name: yeschef-livekit-worker
+    runtime: python
+    rootDir: yeschef-backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: python livekit_agent.py start
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: LIVEKIT_URL
+        sync: false
+      - key: LIVEKIT_API_KEY
+        sync: false
+      - key: LIVEKIT_API_SECRET
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+
+  # --------------------------------------------------------------------------------
+  # 3. Web Frontend (Vite/React)
+  # --------------------------------------------------------------------------------
+  - type: static
+    name: yeschef-web
+    runtime: static
+    rootDir: yeschef-web
+    buildCommand: npm install && npm run build
+    publishDir: dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: NODE_VERSION
+        value: 20.10.0
+      - key: VITE_API_URL
+        fromService:
+          type: web
+          name: yeschef-backend
+          envVarKey: RENDER_EXTERNAL_URL

@@ -22,6 +22,37 @@ app.add_middleware(
 )
 
 
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse
+
+class ClientSecretMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        # 1. Allow health check without auth (optional, but good for load balancers)
+        if request.url.path == "/health":
+            return await call_next(request)
+
+        # 2. Check for Origin header (Browser/CORS request)
+        origin = request.headers.get("origin")
+        if origin and any(allowed in origin for allowed in _allowed_origins):
+             # Handled by CORSMiddleware
+            return await call_next(request)
+
+        # 3. If no valid Origin, require X-Client-Secret (Mobile/Backend-to-Backend)
+        client_secret = os.environ.get("CLIENT_SECRET")
+        if not client_secret:
+            # If no secret is configured, we might decide to fail open or closed.
+            # Closed is safer.
+            return JSONResponse(status_code=500, content={"detail": "Server misconfiguration: CLIENT_SECRET not set"})
+        
+        request_secret = request.headers.get("x-client-secret")
+        if request_secret != client_secret:
+            return JSONResponse(status_code=403, content={"detail": "Forbidden: Invalid Client Secret"})
+
+        return await call_next(request)
+
+app.add_middleware(ClientSecretMiddleware)
+
+
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "service": "yeschef-backend"}
