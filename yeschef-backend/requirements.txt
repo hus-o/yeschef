@@ -13,3 +13,4 @@ python-multipart
 livekit-agents>=1.0
 livekit-plugins-google>=1.0
 livekit-api>=1.0
+ruff

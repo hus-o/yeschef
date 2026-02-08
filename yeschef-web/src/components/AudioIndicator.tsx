@@ -1,4 +1,4 @@
-import { Mic, Volume2, Wifi, WifiOff } from "lucide-react";
+import { Mic, Volume2, WifiOff } from "lucide-react";
 
 interface AudioIndicatorProps {
   isActive: boolean;

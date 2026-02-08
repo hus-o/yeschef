@@ -7,12 +7,7 @@ interface RecipeCardProps {
 }
 
 export default function RecipeCard({ recipe, onClick }: RecipeCardProps) {
-  const difficultyClass =
-    recipe.difficulty === "easy"
-      ? "badge-easy"
-      : recipe.difficulty === "hard"
-        ? "badge-hard"
-        : "badge-medium";
+
 
   // Generate a warm gradient as placeholder when no thumbnail
   const gradients = [

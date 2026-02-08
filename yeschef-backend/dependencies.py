@@ -2,7 +2,6 @@ import os
 from dotenv import load_dotenv
 from google import genai
 from postgrest import SyncPostgrestClient
-from supabase_auth import SyncGoTrueClient
 
 load_dotenv()
 

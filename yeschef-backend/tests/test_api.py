@@ -1,9 +1,8 @@
-import pytest
 import uuid
 from fastapi.testclient import TestClient
 from unittest.mock import patch, MagicMock
 from main import app
-from schemas import JobStatus, ExtractionResult, RecipeData, Ingredient, Step
+from schemas import ExtractionResult, RecipeData, Ingredient, Step
 
 client = TestClient(app)
 
@@ -97,7 +96,7 @@ def test_live_websocket(mock_supabase):
         # OR just test that it accepts if recipe exists.
         
         # Let's try to connect
-        with client.websocket_connect(f"/live/{recipe_id}") as websocket:
+        with client.websocket_connect(f"/live/{recipe_id}"):
             # If everything mocked correctly, it should likely accept.
             # But the route calls `await client.aio.live.connect`, which fails if not mocked properly as async
             pass

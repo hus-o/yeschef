@@ -1,6 +1,8 @@
 import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse
 from routers import ingest, live
 
 app = FastAPI(
@@ -20,10 +22,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import JSONResponse
 
 class ClientSecretMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
@@ -52,15 +50,12 @@ class ClientSecretMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(ClientSecretMiddleware)
 
-
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "service": "yeschef-backend"}
-
 
 # Ingest router: /extract, /jobs/{id}, /recipes, /recipes/{id}, /demo/recipes
 app.include_router(ingest.router)
 
 # Live router: /live/token, /live/sessions/{id}/summary
 app.include_router(live.router)
-

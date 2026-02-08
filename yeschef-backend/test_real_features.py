@@ -85,7 +85,7 @@ def test_extraction():
     try:
         res = requests.post(f"{BASE_URL}/extract", params={"url": url})
         if res.status_code == 200:
-            print(f"✅ Extraction request received status 200.")
+            print("✅ Extraction request received status 200.")
             job_data = res.json()
             print(f"Response: {job_data}")
             

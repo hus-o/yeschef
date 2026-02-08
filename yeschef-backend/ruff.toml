@@ -1,0 +1,10 @@
+line-length = 120
+target-version = "py310"
+select = ["E", "F", "B"]
+ignore = ["E501", "B008"]
+exclude = [
+    ".git",
+    "__pycache__",
+    "venv",
+    "venv_old",
+]

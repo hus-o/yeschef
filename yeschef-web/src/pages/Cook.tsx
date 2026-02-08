@@ -623,13 +623,14 @@ function CookUI({ recipe, onEnd }: { recipe: Recipe; onEnd: () => void }) {
                         ? "var(--olive-light)"
                         : "rgba(255,255,255,0.1)",
                     height: agentSpeaking
-                      ? `${Math.random() * 80 + 20}%`
+                      ? "100%"
                       : agentListening
-                        ? `${Math.random() * 30 + 10}%`
+                        ? "40%"
                         : "4px",
-                    transition: agentSpeaking
-                      ? "height 0.1s ease"
-                      : "height 0.3s ease",
+                    animation:
+                      agentSpeaking || agentListening
+                        ? `bar-pulse ${0.5 + (i % 7) * 0.1}s ease-in-out ${(i % 4) * 0.1}s infinite`
+                        : "none",
                     alignSelf: "center",
                   }}
                 />

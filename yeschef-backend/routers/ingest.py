@@ -1,16 +1,14 @@
 import os
-import json
 import time
 import traceback
 import collections
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
 from uuid import uuid4, UUID
-from typing import Optional, List
+from typing import List
 from datetime import datetime
 
 from schemas import (
-    JobStatus, ExtractionResult, RecipeData,
-    ExtractRequest, RecipeResponse, RecipeListResponse,
+    JobStatus, ExtractionResult, ExtractRequest, RecipeResponse, RecipeListResponse,
 )
 from dependencies import get_supabase_client, get_gemini_client
 
@@ -230,7 +228,6 @@ def normalize_all_ingredients(ingredients: list[dict]) -> list[dict]:
     return [normalize_ingredient(i) for i in ingredients]
 
 
-import re
 
 def _fix_broken_words(text: str) -> str:
     """Fix words with random single spaces inserted (common in TikTok/auto-generated transcripts).
@@ -330,7 +327,7 @@ async def fetch_content(url: str, platform: str) -> tuple[str, str]:
                 raise ValueError(f"Unexpected transcript format: {type(transcript_data)}")
         except Exception as e:
             print(f"[Supadata] Transcript error: {e}")
-            raise ValueError(f"Could not get transcript from {platform} URL: {e}")
+            raise ValueError(f"Could not get transcript from {platform} URL: {e}") from e
 
         content = f"Source: {platform} video\nTitle: {title}\nDescription: {description}\nTranscript:\n{raw_transcript}"
         return content, raw_transcript
