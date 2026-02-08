@@ -77,10 +77,10 @@ export const useRecipeStore = create<RecipeState>((set) => ({
           ? {
               ...r,
               ingredients: r.ingredients.map((ing, i) =>
-                i === ingredientIndex ? { ...ing, checked: !ing.checked } : ing
+                i === ingredientIndex ? { ...ing, checked: !ing.checked } : ing,
               ),
             }
-          : r
+          : r,
       ),
     })),
 }));

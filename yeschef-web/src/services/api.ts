@@ -41,7 +41,8 @@ export const api = {
 
   getDemoRecipes: async () => {
     const res = await fetch(`${API_URL}/demo/recipes`);
-    if (!res.ok) throw new Error(`Demo recipes fetch failed: ${res.statusText}`);
+    if (!res.ok)
+      throw new Error(`Demo recipes fetch failed: ${res.statusText}`);
     return res.json();
   },
 };
