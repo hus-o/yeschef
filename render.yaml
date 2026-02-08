@@ -54,7 +54,7 @@ services:
   # --------------------------------------------------------------------------------
   # 3. Web Frontend (Vite/React)
   # --------------------------------------------------------------------------------
-  - type: static
+  - type: web
     name: yeschef-web
     runtime: static
     rootDir: yeschef-web
