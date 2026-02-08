@@ -1,0 +1,47 @@
+import { API_URL } from "../config";
+
+export const api = {
+  extractRecipe: async (url: string) => {
+    const res = await fetch(`${API_URL}/extract`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url }),
+    });
+    if (!res.ok) throw new Error(`Extraction failed: ${res.statusText}`);
+    return res.json();
+  },
+
+  getJob: async (jobId: string) => {
+    const res = await fetch(`${API_URL}/jobs/${jobId}`);
+    if (!res.ok) throw new Error(`Job fetch failed: ${res.statusText}`);
+    return res.json();
+  },
+
+  getRecipes: async () => {
+    const res = await fetch(`${API_URL}/recipes`);
+    if (!res.ok) throw new Error(`Recipes fetch failed: ${res.statusText}`);
+    return res.json();
+  },
+
+  getRecipe: async (id: string) => {
+    const res = await fetch(`${API_URL}/recipes/${id}`);
+    if (!res.ok) throw new Error(`Recipe fetch failed: ${res.statusText}`);
+    return res.json();
+  },
+
+  getLiveToken: async (recipeId: string) => {
+    const res = await fetch(`${API_URL}/live/token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ recipe_id: recipeId }),
+    });
+    if (!res.ok) throw new Error(`Token fetch failed: ${res.statusText}`);
+    return res.json();
+  },
+
+  getDemoRecipes: async () => {
+    const res = await fetch(`${API_URL}/demo/recipes`);
+    if (!res.ok) throw new Error(`Demo recipes fetch failed: ${res.statusText}`);
+    return res.json();
+  },
+};
