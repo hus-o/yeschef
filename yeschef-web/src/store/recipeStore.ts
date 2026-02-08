@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 
 export interface Ingredient {
   name: string;
@@ -56,31 +57,45 @@ interface RecipeState {
   toggleIngredient: (recipeId: string, ingredientIndex: number) => void;
 }
 
-export const useRecipeStore = create<RecipeState>((set) => ({
-  recipes: [],
-  currentRecipe: null,
-  currentJob: null,
-  isExtracting: false,
-  error: null,
+export const useRecipeStore = create<RecipeState>()(
+  persist(
+    (set) => ({
+      recipes: [],
+      currentRecipe: null,
+      currentJob: null,
+      isExtracting: false,
+      error: null,
 
-  setRecipes: (recipes) => set({ recipes }),
-  addRecipe: (recipe) =>
-    set((state) => ({ recipes: [recipe, ...state.recipes] })),
-  setCurrentRecipe: (recipe) => set({ currentRecipe: recipe }),
-  setCurrentJob: (job) => set({ currentJob: job }),
-  setIsExtracting: (val) => set({ isExtracting: val }),
-  setError: (error) => set({ error }),
-  toggleIngredient: (recipeId, ingredientIndex) =>
-    set((state) => ({
-      recipes: state.recipes.map((r) =>
-        r.id === recipeId
-          ? {
-              ...r,
-              ingredients: r.ingredients.map((ing, i) =>
-                i === ingredientIndex ? { ...ing, checked: !ing.checked } : ing,
-              ),
-            }
-          : r,
-      ),
-    })),
-}));
+      setRecipes: (recipes) => set({ recipes }),
+      addRecipe: (recipe) =>
+        set((state) => {
+          // Avoid duplicates by id
+          if (state.recipes.some((r) => r.id === recipe.id)) return state;
+          return { recipes: [recipe, ...state.recipes] };
+        }),
+      setCurrentRecipe: (recipe) => set({ currentRecipe: recipe }),
+      setCurrentJob: (job) => set({ currentJob: job }),
+      setIsExtracting: (val) => set({ isExtracting: val }),
+      setError: (error) => set({ error }),
+      toggleIngredient: (recipeId, ingredientIndex) =>
+        set((state) => ({
+          recipes: state.recipes.map((r) =>
+            r.id === recipeId
+              ? {
+                  ...r,
+                  ingredients: r.ingredients.map((ing, i) =>
+                    i === ingredientIndex
+                      ? { ...ing, checked: !ing.checked }
+                      : ing,
+                  ),
+                }
+              : r,
+          ),
+        })),
+    }),
+    {
+      name: "yeschef-recipes",
+      partialize: (state) => ({ recipes: state.recipes }),
+    },
+  ),
+);

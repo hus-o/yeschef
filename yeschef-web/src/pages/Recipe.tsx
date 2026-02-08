@@ -41,27 +41,7 @@ export default function Recipe() {
         return;
       }
 
-      // Try demo recipes endpoint
-      try {
-        const demoData = await api.getDemoRecipes();
-        const demoList = Array.isArray(demoData)
-          ? demoData
-          : demoData.recipes || [];
-        const demoMatch = demoList.find(
-          (r: Record<string, unknown>) => r.id === id,
-        );
-        if (demoMatch) {
-          const mapped = mapApiRecipe(demoMatch);
-          setRecipe(mapped);
-          setCurrentRecipe(mapped);
-          setLoading(false);
-          return;
-        }
-      } catch {
-        // Not a demo recipe
-      }
-
-      // Try API
+      // Fetch from API
       try {
         const data = await api.getRecipe(id);
         const mapped = mapApiRecipe(data);

@@ -29,20 +29,16 @@ export const api = {
     return res.json();
   },
 
-  getLiveToken: async (recipeId: string) => {
+  getLiveToken: async (recipeId: string, resumeFromStep?: number) => {
+    const body: Record<string, unknown> = { recipe_id: recipeId };
+    if (resumeFromStep != null) body.resume_from_step = resumeFromStep;
+
     const res = await fetch(`${API_URL}/live/token`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ recipe_id: recipeId }),
+      body: JSON.stringify(body),
     });
     if (!res.ok) throw new Error(`Token fetch failed: ${res.statusText}`);
-    return res.json();
-  },
-
-  getDemoRecipes: async () => {
-    const res = await fetch(`${API_URL}/demo/recipes`);
-    if (!res.ok)
-      throw new Error(`Demo recipes fetch failed: ${res.statusText}`);
     return res.json();
   },
 };

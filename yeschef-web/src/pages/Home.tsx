@@ -22,61 +22,8 @@ export default function Home() {
   const [extracting, setExtracting] = useState(false);
   const [extractionStatus, setExtractionStatus] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [demoRecipes, setDemoRecipes] = useState<Recipe[]>([]);
-  const [loadingDemos, setLoadingDemos] = useState(true);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const { recipes, addRecipe } = useRecipeStore();
-
-  // Load demo recipes on mount
-  useEffect(() => {
-    const loadDemos = async () => {
-      try {
-        const data = await api.getDemoRecipes();
-        const list = Array.isArray(data) ? data : data.recipes || [];
-        setDemoRecipes(
-          list.map((r: Record<string, unknown>) => ({
-            id: r.id as string,
-            title: r.title as string,
-            description: (r.description as string) || "",
-            source_url: (r.source_url as string) || "",
-            source_platform: (r.source_platform as string) || "web",
-            thumbnail_url: (r.thumbnail_url as string) || "",
-            servings: (r.servings as string) || "",
-            prep_time: (r.prep_time as string) || "",
-            cook_time: (r.cook_time as string) || "",
-            total_time: (r.total_time as string) || "",
-            difficulty: (r.difficulty as string) || "medium",
-            cuisine: (r.cuisine as string) || "",
-            ingredients: (
-              (r.ingredients as Array<Record<string, string>>) || []
-            ).map((i) => ({
-              name: i.item || i.name || "",
-              amount: i.quantity || i.amount || "",
-              unit: i.unit || "",
-              checked: false,
-            })),
-            steps: ((r.steps as Array<Record<string, unknown>>) || []).map(
-              (s) => ({
-                number: (s.step_number as number) || (s.number as number) || 0,
-                instruction: (s.instruction as string) || "",
-                duration: s.duration_minutes
-                  ? `${s.duration_minutes} min`
-                  : (s.duration as string) || undefined,
-                tip: (s.tip as string) || undefined,
-              }),
-            ),
-            tags: (r.tags as string[]) || [],
-            confidence: (r.confidence as number) || 0.8,
-          })),
-        );
-      } catch {
-        console.warn("Could not load demo recipes");
-      } finally {
-        setLoadingDemos(false);
-      }
-    };
-    loadDemos();
-  }, []);
 
   useEffect(() => {
     return () => {
@@ -197,11 +144,6 @@ export default function Home() {
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !extracting) handleExtract();
   };
-
-  const allRecipes = [
-    ...recipes,
-    ...demoRecipes.filter((d) => !recipes.some((r) => r.id === d.id)),
-  ];
 
   return (
     <div
@@ -470,58 +412,122 @@ export default function Home() {
           width: "100%",
         }}
       >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            marginBottom: "var(--space-lg)",
-          }}
-        >
-          <div>
-            <h2 style={{ marginBottom: 4 }}>
-              {recipes.length > 0 ? "Your Recipes" : "Try a Demo Recipe"}
-            </h2>
-            <p style={{ fontSize: "0.85rem", color: "var(--warm-gray)" }}>
-              {recipes.length > 0
-                ? "Recently extracted recipes"
-                : "Click any recipe below to see it in action"}
-            </p>
-          </div>
-          {recipes.length > 0 && demoRecipes.length > 0 && (
-            <span
-              className="badge badge-platform"
-              style={{ fontSize: "0.7rem" }}
+        {recipes.length > 0 ? (
+          <>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginBottom: "var(--space-lg)",
+              }}
             >
-              + {demoRecipes.length} demos
-            </span>
-          )}
-        </div>
-
-        {loadingDemos ? (
-          <div className="skeleton-grid">
-            {[1, 2, 3].map((i) => (
-              <div
-                key={i}
-                className="skeleton"
-                style={{ height: 240, borderRadius: "var(--radius-lg)" }}
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="recipe-grid">
-            {allRecipes.map((recipe, idx) => (
-              <div
-                key={recipe.id}
-                className="animate-in"
-                style={{ animationDelay: `${idx * 80}ms` }}
-              >
-                <RecipeCard
-                  recipe={recipe}
-                  onClick={() => navigate(`/recipe/${recipe.id}`)}
-                />
+              <div>
+                <h2 style={{ marginBottom: 4 }}>Your Recipes</h2>
+                <p style={{ fontSize: "0.85rem", color: "var(--warm-gray)" }}>
+                  Recently extracted recipes
+                </p>
               </div>
-            ))}
+            </div>
+            <div className="recipe-grid">
+              {recipes.map((recipe, idx) => (
+                <div
+                  key={recipe.id}
+                  className="animate-in"
+                  style={{ animationDelay: `${idx * 80}ms` }}
+                >
+                  <RecipeCard
+                    recipe={recipe}
+                    onClick={() => navigate(`/recipe/${recipe.id}`)}
+                  />
+                </div>
+              ))}
+            </div>
+          </>
+        ) : (
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              textAlign: "center",
+              padding: "var(--space-2xl) var(--space-md)",
+              gap: "var(--space-md)",
+            }}
+          >
+            <div
+              style={{
+                width: 72,
+                height: 72,
+                borderRadius: "50%",
+                background: "rgba(232,148,10,0.08)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <ChefHat size={32} color="var(--saffron)" strokeWidth={1.5} />
+            </div>
+            <div>
+              <h3
+                style={{
+                  fontSize: "1.1rem",
+                  color: "var(--charcoal)",
+                  marginBottom: 6,
+                }}
+              >
+                No recipes yet
+              </h3>
+              <p
+                style={{
+                  fontSize: "0.88rem",
+                  color: "var(--warm-gray)",
+                  maxWidth: 340,
+                  lineHeight: 1.6,
+                }}
+              >
+                Paste a recipe URL above to get started. YesChef will extract
+                the ingredients and steps so you can cook with AI voice
+                guidance.
+              </p>
+            </div>
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 8,
+                justifyContent: "center",
+                marginTop: "var(--space-xs)",
+              }}
+            >
+              {[
+                { icon: <Youtube size={13} />, label: "YouTube" },
+                {
+                  icon: <span style={{ fontSize: "0.85rem" }}>♪</span>,
+                  label: "TikTok",
+                },
+                { icon: <Instagram size={13} />, label: "Instagram" },
+                { icon: <Globe size={13} />, label: "Blogs & websites" },
+              ].map((p) => (
+                <span
+                  key={p.label}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 5,
+                    fontSize: "0.76rem",
+                    fontWeight: 500,
+                    color: "var(--warm-gray)",
+                    background: "var(--cream)",
+                    padding: "5px 12px",
+                    borderRadius: "var(--radius-full)",
+                  }}
+                >
+                  {p.icon} {p.label}
+                </span>
+              ))}
+            </div>
           </div>
         )}
       </section>

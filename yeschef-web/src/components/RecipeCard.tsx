@@ -1,5 +1,13 @@
-import { Clock, Users, ChefHat, ArrowRight } from "lucide-react";
+import { Clock, Users, ChefHat, ArrowRight, Pause } from "lucide-react";
+import { useState, useEffect } from "react";
 import type { Recipe } from "../store/recipeStore";
+
+interface SavedSession {
+  recipeId: string;
+  currentStep: number;
+  elapsedSeconds: number;
+  pausedAt: number;
+}
 
 interface RecipeCardProps {
   recipe: Recipe;
@@ -7,7 +15,23 @@ interface RecipeCardProps {
 }
 
 export default function RecipeCard({ recipe, onClick }: RecipeCardProps) {
+  const [pausedStep, setPausedStep] = useState<number | null>(null);
 
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("yeschef-session-" + recipe.id);
+      if (!raw) return;
+      const s: SavedSession = JSON.parse(raw);
+      // Check 4-hour expiry
+      if (Date.now() - s.pausedAt > 4 * 60 * 60 * 1000) {
+        localStorage.removeItem("yeschef-session-" + recipe.id);
+        return;
+      }
+      setPausedStep(s.currentStep + 1); // Display as 1-indexed
+    } catch {
+      // ignore
+    }
+  }, [recipe.id]);
 
   // Generate a warm gradient as placeholder when no thumbnail
   const gradients = [
@@ -108,6 +132,31 @@ export default function RecipeCard({ recipe, onClick }: RecipeCardProps) {
             }}
           >
             {recipe.difficulty}
+          </span>
+        )}
+
+        {/* Paused session badge */}
+        {pausedStep !== null && (
+          <span
+            style={{
+              position: "absolute",
+              bottom: 12,
+              right: 12,
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+              background: "rgba(232,148,10,0.9)",
+              backdropFilter: "blur(8px)",
+              fontSize: "0.7rem",
+              fontWeight: 700,
+              padding: "4px 10px",
+              borderRadius: "var(--radius-full)",
+              color: "#fff",
+              letterSpacing: "0.03em",
+            }}
+          >
+            <Pause size={10} />
+            Step {pausedStep}/{recipe.steps.length}
           </span>
         )}
       </div>

@@ -114,7 +114,15 @@ YOUR PERSONALITY & RULES:
 - If the user seems confused or frustrated, be extra encouraging
 - If asked something unrelated to cooking, briefly answer but gently steer back to the recipe
 - NEVER say you're an AI or a language model — you're YesChef, their kitchen companion
-- End the session warmly when they finish the last step — congratulate them!"""
+- End the session warmly when they finish the last step — congratulate them!
+
+CAMERA / VIDEO:
+- The user can share their camera with you by tapping the camera button
+- You can OCCASIONALLY ask the user to show you something by saying "Can you show me that? Tap the camera button so I can take a look"
+- Good moments to ask: checking colour/doneness of meat, whether onions are caramelised enough, if dough has the right consistency, confirming a knife cut size, checking if oil is hot enough
+- When you receive video, give specific visual feedback: comment on colour, texture, size, doneness — be genuinely helpful
+- Do NOT ask for camera every step — only when visual confirmation would genuinely help (maybe 2-3 times per recipe)
+- If the user shows you something without being asked, respond helpfully about what you see"""
 
         super().__init__(instructions=instructions)
         self._recipe_data = recipe_data
@@ -130,22 +138,28 @@ async def entrypoint(ctx: JobContext):
     ctx.log_context_fields = {"room": ctx.room.name}
 
     # Parse recipe context from room metadata (set by POST /live/token)
+    # NOTE: ctx.job.room is the protobuf snapshot from dispatch — available immediately.
+    # ctx.room is the RTC Room object which is empty until connect() is called.
     recipe_data = {}
-    if ctx.room.metadata:
+    room_metadata = ctx.job.room.metadata if ctx.job and ctx.job.room else ""
+    if room_metadata:
         try:
-            recipe_data = json.loads(ctx.room.metadata)
+            recipe_data = json.loads(room_metadata)
             logger.info(
                 f"Loaded recipe from room metadata: {recipe_data.get('title', 'unknown')}"
             )
         except json.JSONDecodeError:
             logger.warning("Could not parse room metadata as JSON")
+    else:
+        logger.warning("No room metadata found — agent will freestyle")
 
     title = recipe_data.get("title", "something delicious")
+    resume_from_step = recipe_data.get("resume_from_step")  # None or int (1-indexed)
 
     # Configure Gemini 2.5 Flash native audio for real-time voice
     session = AgentSession(
         llm=google.beta.realtime.RealtimeModel(
-            model="gemini-2.5-flash-native-audio-preview-12-2025",
+            model="gemini-2.5-flash-native-audio-preview-09-2025",
             voice="Aoede",  # warm, friendly voice
             temperature=0.8,
             enable_affective_dialog=True,
@@ -166,9 +180,14 @@ async def entrypoint(ctx: JobContext):
     await ctx.connect()
 
     # Send an initial greeting to kick things off
-    await session.generate_reply(
-        instructions=f"Greet the user warmly. Tell them you're YesChef and you're excited to help them make {title}. Ask if they have their ingredients ready. Keep it brief and energetic — 2 sentences max."
-    )
+    if resume_from_step:
+        await session.generate_reply(
+            instructions=f"Welcome the user back! They paused while cooking {title} and are resuming at step {resume_from_step}. Briefly remind them what step {resume_from_step} is about and ask if they're ready to continue. Keep it warm and brief — 2 sentences max."
+        )
+    else:
+        await session.generate_reply(
+            instructions=f"Greet the user warmly. Tell them you're YesChef and you're excited to help them make {title}. Ask if they have their ingredients ready. Keep it brief and energetic — 2 sentences max."
+        )
 
 
 # ---------------------------------------------------------------------------

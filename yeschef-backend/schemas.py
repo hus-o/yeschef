@@ -81,6 +81,7 @@ class LiveTokenRequest(BaseModel):
     recipe_id: str
     user_id: str = "demo-user"
     user_name: str = "Chef"
+    resume_from_step: Optional[int] = None  # step number to resume from (1-indexed)
 
 class LiveTokenResponse(BaseModel):
     token: str

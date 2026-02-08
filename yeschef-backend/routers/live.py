@@ -55,7 +55,7 @@ async def create_live_token(req: LiveTokenRequest, request: Request):
     room_name = f"cook-{req.recipe_id[:8]}-{uuid4().hex[:6]}"
 
     # Build room metadata (the LiveKit Agent reads this to get recipe context)
-    room_metadata = json.dumps({
+    metadata_dict = {
         "recipe_id": str(recipe["id"]),
         "title": recipe.get("title", ""),
         "description": recipe.get("description", ""),
@@ -63,7 +63,14 @@ async def create_live_token(req: LiveTokenRequest, request: Request):
         "steps": recipe.get("steps", []),
         "servings": recipe.get("servings", ""),
         "difficulty": recipe.get("difficulty", ""),
-    })
+        "prep_time": recipe.get("prep_time", ""),
+        "cook_time": recipe.get("cook_time", ""),
+        "total_time": recipe.get("total_time", ""),
+        "cuisine": recipe.get("cuisine", ""),
+    }
+    if req.resume_from_step is not None:
+        metadata_dict["resume_from_step"] = req.resume_from_step
+    room_metadata = json.dumps(metadata_dict)
 
     # Create the LiveKit room with metadata BEFORE the participant joins
     # This ensures the agent can read the recipe context from room.metadata
@@ -102,7 +109,7 @@ async def create_live_token(req: LiveTokenRequest, request: Request):
     try:
         supabase.table("cook_sessions").insert({
             "recipe_id": req.recipe_id,
-            "user_id": None,  # No auth in demo mode
+            "user_id": None,  # No auth yet
         }).execute()
     except Exception as e:
         print(f"[Live] Failed to create cook_session record: {e}")

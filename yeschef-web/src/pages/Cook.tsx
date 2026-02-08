@@ -6,6 +6,8 @@ import {
   useConnectionState,
   useRoomContext,
   useVoiceAssistant,
+  useLocalParticipant,
+  VideoTrack,
 } from "@livekit/components-react";
 import "@livekit/components-styles";
 import {
@@ -13,7 +15,11 @@ import {
   ArrowLeft,
   Mic,
   MicOff,
+  Camera,
+  CameraOff,
   PhoneOff,
+  Pause,
+  Play,
   ChevronLeft,
   ChevronRight,
   Loader2,
@@ -25,6 +31,43 @@ import {
 } from "lucide-react";
 import { api } from "../services/api";
 import { useRecipeStore, type Recipe } from "../store/recipeStore";
+
+/* ── Saved Session helpers (localStorage, 4-hour expiry) ── */
+interface SavedSession {
+  recipeId: string;
+  currentStep: number; // 0-indexed
+  elapsedSeconds: number;
+  pausedAt: number; // Date.now()
+}
+
+const SESSION_KEY_PREFIX = "yeschef-session-";
+const SESSION_EXPIRY_MS = 4 * 60 * 60 * 1000; // 4 hours
+
+function getSavedSession(recipeId: string): SavedSession | null {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY_PREFIX + recipeId);
+    if (!raw) return null;
+    const s: SavedSession = JSON.parse(raw);
+    if (Date.now() - s.pausedAt > SESSION_EXPIRY_MS) {
+      localStorage.removeItem(SESSION_KEY_PREFIX + recipeId);
+      return null;
+    }
+    return s;
+  } catch {
+    return null;
+  }
+}
+
+function saveSession(session: SavedSession) {
+  localStorage.setItem(
+    SESSION_KEY_PREFIX + session.recipeId,
+    JSON.stringify(session),
+  );
+}
+
+function clearSavedSession(recipeId: string) {
+  localStorage.removeItem(SESSION_KEY_PREFIX + recipeId);
+}
 
 interface LiveKitTokenData {
   token: string;
@@ -44,6 +87,8 @@ export default function Cook() {
   const [error, setError] = useState<string | null>(null);
   const [sessionEnded, setSessionEnded] = useState(false);
   const [retryAttempt, setRetryAttempt] = useState(0);
+  const [resumeFromStep, setResumeFromStep] = useState<number | null>(null);
+  const [savedSession, setSavedSession] = useState<SavedSession | null>(null);
 
   // Guards against rapid double-clicks firing multiple token requests
   const fetchingTokenRef = useRef(false);
@@ -56,32 +101,21 @@ export default function Cook() {
 
       if (!r) {
         try {
-          const demoData = await api.getDemoRecipes();
-          const demoList = Array.isArray(demoData)
-            ? demoData
-            : demoData.recipes || [];
-          const match = demoList.find(
-            (d: Record<string, unknown>) => d.id === id,
-          );
-          if (match) r = mapApiRecipe(match);
+          const data = await api.getRecipe(id);
+          r = mapApiRecipe(data);
         } catch {
-          /* ignore */
-        }
-
-        if (!r) {
-          try {
-            const data = await api.getRecipe(id);
-            r = mapApiRecipe(data);
-          } catch {
-            setError("Could not load recipe");
-            setLoading(false);
-            return;
-          }
+          setError("Could not load recipe");
+          setLoading(false);
+          return;
         }
       }
 
       setRecipe(r);
       setLoading(false);
+
+      // Check for a saved (paused) session
+      const saved = getSavedSession(id);
+      if (saved) setSavedSession(saved);
     };
 
     init();
@@ -104,7 +138,7 @@ export default function Cook() {
       for (let attempt = 1; attempt <= 3; attempt++) {
         setRetryAttempt(attempt);
         try {
-          const tkn = await api.getLiveToken(id);
+          const tkn = await api.getLiveToken(id, resumeFromStep ?? undefined);
           setTokenData(tkn);
           return;
         } catch (err: any) {
@@ -119,7 +153,9 @@ export default function Cook() {
           }
 
           if (attempt === 3) {
-            setError(err?.message || "Failed to start voice session after 3 attempts.");
+            setError(
+              err?.message || "Failed to start voice session after 3 attempts.",
+            );
             return;
           }
 
@@ -134,6 +170,14 @@ export default function Cook() {
   }, [id]);
 
   const handleEndSession = useCallback(() => {
+    if (id) clearSavedSession(id);
+    setSessionEnded(true);
+    setTimeout(() => navigate(`/recipe/${id}`), 300);
+  }, [id, navigate]);
+
+  const handlePauseSession = useCallback(() => {
+    // The CookUI's beforeunload will also fire, but we save here explicitly
+    // so user gets immediate feedback. CookUI exposes step/elapsed via ref.
     setSessionEnded(true);
     setTimeout(() => navigate(`/recipe/${id}`), 300);
   }, [id, navigate]);
@@ -218,7 +262,14 @@ export default function Cook() {
       <div style={fullScreen}>
         <div style={centeredCol}>
           <ChefHat size={48} color="var(--saffron)" />
-          <h2 style={{ marginTop: "var(--space-md)", fontFamily: "var(--font-display)" }}>Ready to Cook?</h2>
+          <h2
+            style={{
+              marginTop: "var(--space-md)",
+              fontFamily: "var(--font-display)",
+            }}
+          >
+            {savedSession ? "Session Paused" : "Ready to Cook?"}
+          </h2>
           <p
             style={{
               color: "var(--charcoal-mid)",
@@ -229,28 +280,87 @@ export default function Cook() {
               lineHeight: 1.6,
             }}
           >
-            Start your voice session to cook <strong>{recipe.title}</strong> with YesChef assistant.
+            {savedSession ? (
+              <>
+                You paused <strong>{recipe.title}</strong> at{" "}
+                <strong>step {savedSession.currentStep + 1}</strong> of{" "}
+                {recipe.steps.length}.
+              </>
+            ) : (
+              <>
+                Start your voice session to cook <strong>{recipe.title}</strong>{" "}
+                with YesChef assistant.
+              </>
+            )}
           </p>
 
-          <div style={{ marginTop: "var(--space-xl)", width: "100%", maxWidth: 300 }}>
-            <button
-              className="btn btn-primary btn-lg"
-              onClick={startVoiceSession}
-              disabled={fetchingToken}
-              style={{ width: "100%", gap: 10 }}
-            >
-              {fetchingToken ? (
-                <>
-                  <Loader2 size={18} className="animate-spin" />
-                  {retryAttempt > 1 ? `Retrying (${retryAttempt}/3)...` : "Connecting..."}
-                </>
-              ) : (
-                <>
-                  <Mic size={20} />
-                  Start Voice Session
-                </>
-              )}
-            </button>
+          <div
+            style={{
+              marginTop: "var(--space-xl)",
+              width: "100%",
+              maxWidth: 300,
+            }}
+          >
+            {savedSession ? (
+              <>
+                <button
+                  className="btn btn-primary btn-lg"
+                  onClick={() => {
+                    setResumeFromStep(savedSession.currentStep + 1); // 1-indexed for backend
+                    startVoiceSession();
+                  }}
+                  disabled={fetchingToken}
+                  style={{ width: "100%", gap: 10 }}
+                >
+                  {fetchingToken ? (
+                    <>
+                      <Loader2 size={18} className="animate-spin" />
+                      Connecting...
+                    </>
+                  ) : (
+                    <>
+                      <Play size={20} />
+                      Resume from Step {savedSession.currentStep + 1}
+                    </>
+                  )}
+                </button>
+
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => {
+                    if (id) clearSavedSession(id);
+                    setSavedSession(null);
+                    setResumeFromStep(null);
+                    startVoiceSession();
+                  }}
+                  disabled={fetchingToken}
+                  style={{ width: "100%", marginTop: "var(--space-sm)" }}
+                >
+                  Start Fresh
+                </button>
+              </>
+            ) : (
+              <button
+                className="btn btn-primary btn-lg"
+                onClick={startVoiceSession}
+                disabled={fetchingToken}
+                style={{ width: "100%", gap: 10 }}
+              >
+                {fetchingToken ? (
+                  <>
+                    <Loader2 size={18} className="animate-spin" />
+                    {retryAttempt > 1
+                      ? `Retrying (${retryAttempt}/3)...`
+                      : "Connecting..."}
+                  </>
+                ) : (
+                  <>
+                    <Mic size={20} />
+                    Start Voice Session
+                  </>
+                )}
+              </button>
+            )}
 
             <button
               className="btn btn-ghost"
@@ -275,8 +385,13 @@ export default function Cook() {
                 maxWidth: 320,
               }}
             >
-              <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-                <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
+              <div
+                style={{ display: "flex", gap: 8, alignItems: "flex-start" }}
+              >
+                <AlertCircle
+                  size={16}
+                  style={{ flexShrink: 0, marginTop: 2 }}
+                />
                 <span>{error}</span>
               </div>
             </div>
@@ -300,10 +415,19 @@ export default function Cook() {
           noiseSuppression: true,
           autoGainControl: true,
         },
+        videoCaptureDefaults: {
+          resolution: { width: 768, height: 768, frameRate: 10 },
+        },
       }}
     >
       <RoomAudioRenderer />
-      <CookUI recipe={recipe} onEnd={handleEndSession} />
+      <CookUI
+        recipe={recipe}
+        onEnd={handleEndSession}
+        onPause={handlePauseSession}
+        initialStep={savedSession?.currentStep ?? 0}
+        initialElapsed={savedSession?.elapsedSeconds ?? 0}
+      />
     </LiveKitRoom>
   );
 }
@@ -312,15 +436,63 @@ export default function Cook() {
    CookUI — Mobile-first cook screen inside LiveKitRoom
    ═══════════════════════════════════════════════════════════ */
 
-function CookUI({ recipe, onEnd }: { recipe: Recipe; onEnd: () => void }) {
+function CookUI({
+  recipe,
+  onEnd,
+  onPause,
+  initialStep,
+  initialElapsed,
+}: {
+  recipe: Recipe;
+  onEnd: () => void;
+  onPause: () => void;
+  initialStep: number;
+  initialElapsed: number;
+}) {
   const room = useRoomContext();
   const connectionState = useConnectionState();
   const voiceAssistant = useVoiceAssistant();
+  const { localParticipant, cameraTrack } = useLocalParticipant();
 
-  const [currentStep, setCurrentStep] = useState(0);
+  const [currentStep, setCurrentStep] = useState(initialStep);
   const [isMuted, setIsMuted] = useState(false);
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [cameraOn, setCameraOn] = useState(false);
+  const [elapsedSeconds, setElapsedSeconds] = useState(initialElapsed);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Keep refs so beforeunload/visibility callbacks see latest values
+  const stepRef = useRef(currentStep);
+  const elapsedRef = useRef(elapsedSeconds);
+  useEffect(() => {
+    stepRef.current = currentStep;
+  }, [currentStep]);
+  useEffect(() => {
+    elapsedRef.current = elapsedSeconds;
+  }, [elapsedSeconds]);
+
+  // Auto-save session on tab close / visibility hidden
+  useEffect(() => {
+    const persist = () => {
+      saveSession({
+        recipeId: recipe.id,
+        currentStep: stepRef.current,
+        elapsedSeconds: elapsedRef.current,
+        pausedAt: Date.now(),
+      });
+    };
+
+    const handleBeforeUnload = () => persist();
+    const handleVisChange = () => {
+      if (document.visibilityState === "hidden") persist();
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    document.addEventListener("visibilitychange", handleVisChange);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      document.removeEventListener("visibilitychange", handleVisChange);
+    };
+  }, [recipe.id]);
 
   const isConnected = connectionState === "connected";
   const agentSpeaking = voiceAssistant.state === "speaking";
@@ -357,6 +529,16 @@ function CookUI({ recipe, onEnd }: { recipe: Recipe; onEnd: () => void }) {
     }
   }, [room, isMuted]);
 
+  const toggleCamera = useCallback(async () => {
+    try {
+      const newState = !cameraOn;
+      await localParticipant.setCameraEnabled(newState);
+      setCameraOn(newState);
+    } catch (err) {
+      console.error("Camera toggle failed:", err);
+    }
+  }, [localParticipant, cameraOn]);
+
   const prevStep = () => setCurrentStep((s) => Math.max(0, s - 1));
   const nextStep = () => setCurrentStep((s) => Math.min(totalSteps - 1, s + 1));
 
@@ -386,7 +568,14 @@ function CookUI({ recipe, onEnd }: { recipe: Recipe; onEnd: () => void }) {
         }}
       >
         <button
-          onClick={onEnd}
+          onClick={() => {
+            if (
+              window.confirm("End session? Your progress will not be saved.")
+            ) {
+              clearSavedSession(recipe.id);
+              onEnd();
+            }
+          }}
           style={{
             display: "flex",
             alignItems: "center",
@@ -401,9 +590,9 @@ function CookUI({ recipe, onEnd }: { recipe: Recipe; onEnd: () => void }) {
             minHeight: 44,
           }}
         >
-          <ArrowLeft size={16} />
-          <span style={{ display: "none" }} className="hide-mobile">
-            Back
+          <PhoneOff size={14} color="var(--danger)" />
+          <span style={{ color: "var(--danger)", fontSize: "0.75rem" }}>
+            End
           </span>
         </button>
 
@@ -768,6 +957,63 @@ function CookUI({ recipe, onEnd }: { recipe: Recipe; onEnd: () => void }) {
         </div>
       </div>
 
+      {/* ── Local Camera Preview (fixed corner, shown when camera is on) ── */}
+      {cameraOn && cameraTrack && (
+        <div
+          style={{
+            position: "fixed",
+            bottom: 200,
+            right: 16,
+            width: 120,
+            height: 120,
+            borderRadius: 16,
+            overflow: "hidden",
+            border: "2px solid rgba(255,255,255,0.15)",
+            boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+            zIndex: 50,
+            background: "#000",
+          }}
+        >
+          <VideoTrack
+            trackRef={cameraTrack}
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              transform: "scaleX(-1)",
+            }}
+          />
+          <div
+            style={{
+              position: "absolute",
+              top: 6,
+              left: 6,
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+              background: "rgba(217,79,79,0.85)",
+              padding: "2px 8px",
+              borderRadius: 10,
+              fontSize: "0.6rem",
+              fontWeight: 700,
+              color: "#fff",
+              letterSpacing: "0.05em",
+            }}
+          >
+            <div
+              style={{
+                width: 5,
+                height: 5,
+                borderRadius: "50%",
+                background: "#fff",
+                animation: "pulse 1.5s ease infinite",
+              }}
+            />
+            LIVE
+          </div>
+        </div>
+      )}
+
       {/* ── Bottom Controls (safe area aware) ── */}
       <div
         style={{
@@ -781,62 +1027,147 @@ function CookUI({ recipe, onEnd }: { recipe: Recipe; onEnd: () => void }) {
           flexShrink: 0,
         }}
       >
-        <button
-          onClick={toggleMute}
-          style={{
-            width: 68,
-            height: 68,
-            borderRadius: "50%",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            border: "none",
-            color: "var(--white)",
-            cursor: "pointer",
-            transition: "all 0.2s ease",
-            background: isMuted
-              ? "var(--danger)"
-              : "linear-gradient(135deg, var(--saffron), var(--saffron-glow))",
-            boxShadow: isMuted
-              ? "0 4px 20px rgba(217,79,79,0.4)"
-              : "0 4px 20px rgba(232,148,10,0.4)",
-          }}
-        >
-          {isMuted ? <MicOff size={26} /> : <Mic size={26} />}
-        </button>
-
-        <span
-          style={{
-            color: "rgba(255,255,255,0.45)",
-            fontSize: "0.75rem",
-            fontWeight: 500,
-          }}
-        >
-          {isMuted ? "Tap to unmute" : "Tap to mute"}
-        </span>
-
-        <button
-          onClick={onEnd}
+        {/* Mic + Camera row */}
+        <div
           style={{
             display: "flex",
             alignItems: "center",
-            gap: 6,
-            background: "none",
-            border: "1px solid rgba(217,79,79,0.3)",
-            color: "var(--danger)",
-            fontSize: "0.8rem",
-            fontWeight: 600,
-            padding: "8px 20px",
-            minHeight: 40,
-            borderRadius: "var(--radius-full)",
-            cursor: "pointer",
-            marginTop: "var(--space-xs)",
-            transition: "all 0.2s ease",
+            gap: 20,
           }}
         >
-          <PhoneOff size={16} />
-          End Session
-        </button>
+          {/* Camera toggle */}
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 4,
+            }}
+          >
+            <button
+              onClick={toggleCamera}
+              style={{
+                width: 56,
+                height: 56,
+                borderRadius: "50%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                border: "none",
+                color: "var(--white)",
+                cursor: "pointer",
+                transition: "all 0.2s ease",
+                background: cameraOn
+                  ? "linear-gradient(135deg, var(--olive), var(--olive-light))"
+                  : "rgba(255,255,255,0.1)",
+                boxShadow: cameraOn
+                  ? "0 4px 16px rgba(107,142,35,0.4)"
+                  : "none",
+              }}
+            >
+              {cameraOn ? <Camera size={22} /> : <CameraOff size={22} />}
+            </button>
+            <span
+              style={{
+                color: "rgba(255,255,255,0.4)",
+                fontSize: "0.65rem",
+                fontWeight: 500,
+              }}
+            >
+              {cameraOn ? "Camera on" : "Camera"}
+            </span>
+          </div>
+
+          {/* Mic toggle (primary, larger) */}
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 4,
+            }}
+          >
+            <button
+              onClick={toggleMute}
+              style={{
+                width: 68,
+                height: 68,
+                borderRadius: "50%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                border: "none",
+                color: "var(--white)",
+                cursor: "pointer",
+                transition: "all 0.2s ease",
+                background: isMuted
+                  ? "var(--danger)"
+                  : "linear-gradient(135deg, var(--saffron), var(--saffron-glow))",
+                boxShadow: isMuted
+                  ? "0 4px 20px rgba(217,79,79,0.4)"
+                  : "0 4px 20px rgba(232,148,10,0.4)",
+              }}
+            >
+              {isMuted ? <MicOff size={26} /> : <Mic size={26} />}
+            </button>
+            <span
+              style={{
+                color: "rgba(255,255,255,0.45)",
+                fontSize: "0.68rem",
+                fontWeight: 500,
+              }}
+            >
+              {isMuted ? "Unmute" : "Mute"}
+            </span>
+          </div>
+
+          {/* End session (small circle) */}
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 4,
+            }}
+          >
+            <button
+              onClick={() => {
+                // Save session before pausing
+                saveSession({
+                  recipeId: recipe.id,
+                  currentStep,
+                  elapsedSeconds,
+                  pausedAt: Date.now(),
+                });
+                onPause();
+              }}
+              style={{
+                width: 56,
+                height: 56,
+                borderRadius: "50%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                border: "none",
+                color: "var(--white)",
+                cursor: "pointer",
+                transition: "all 0.2s ease",
+                background: "rgba(232,148,10,0.15)",
+              }}
+            >
+              <Pause size={22} color="var(--saffron)" />
+            </button>
+            <span
+              style={{
+                color: "rgba(255,255,255,0.4)",
+                fontSize: "0.65rem",
+                fontWeight: 500,
+              }}
+            >
+              Pause
+            </span>
+          </div>
+        </div>
       </div>
     </div>
   );

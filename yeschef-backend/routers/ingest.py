@@ -4,7 +4,6 @@ import traceback
 import collections
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
 from uuid import uuid4, UUID
-from typing import List
 from datetime import datetime
 
 from schemas import (
@@ -35,118 +34,6 @@ def _check_rate_limit(client_ip: str, label: str = "extract") -> None:
 
 FIRECRAWL_API_KEY = os.environ.get("FIRECRAWL_API_KEY")
 SUPADATA_API_KEY = os.environ.get("SUPADATA_API_KEY")
-
-# ── Sample demo recipes (pre-extracted, high quality) ──
-
-DEMO_RECIPES: List[dict] = [
-    {
-        "id": "demo-1",
-        "title": "Classic Spaghetti Aglio e Olio",
-        "description": "A simple, elegant Italian pasta dish with garlic, olive oil, and chili flakes. Ready in 20 minutes.",
-        "source_url": "https://example.com/aglio-e-olio",
-        "source_platform": "web",
-        "thumbnail_url": None,
-        "servings": "4",
-        "prep_time": "5 min",
-        "cook_time": "15 min",
-        "total_time": "20 min",
-        "difficulty": "easy",
-        "cuisine": "Italian",
-        "ingredients": [
-            {"item": "spaghetti", "quantity": "400", "unit": "g", "notes": None},
-            {"item": "garlic", "quantity": "6", "unit": "cloves", "notes": "thinly sliced"},
-            {"item": "extra virgin olive oil", "quantity": "1/2", "unit": "cup", "notes": "good quality"},
-            {"item": "red pepper flakes", "quantity": "1", "unit": "tsp", "notes": "adjust to taste"},
-            {"item": "fresh parsley", "quantity": "1/4", "unit": "cup", "notes": "chopped"},
-            {"item": "salt", "quantity": "", "unit": "", "notes": "to taste"},
-            {"item": "parmesan cheese", "quantity": "", "unit": "", "notes": "optional, for serving"},
-        ],
-        "steps": [
-            {"step_number": 1, "instruction": "Bring a large pot of salted water to a boil. Cook spaghetti until al dente according to package directions. Reserve 1 cup of pasta water before draining.", "duration_minutes": 10, "tip": "Generously salt the water — it should taste like the sea."},
-            {"step_number": 2, "instruction": "While pasta cooks, heat olive oil in a large skillet over medium-low heat. Add sliced garlic and cook gently until golden (not brown), about 3-4 minutes.", "duration_minutes": 4, "tip": "Low and slow! Burnt garlic turns bitter and ruins the dish."},
-            {"step_number": 3, "instruction": "Add red pepper flakes to the garlic oil and cook for 30 seconds until fragrant.", "duration_minutes": 1, "tip": None},
-            {"step_number": 4, "instruction": "Add drained spaghetti directly to the skillet. Toss vigorously with tongs, adding pasta water a splash at a time until a silky sauce forms.", "duration_minutes": 2, "tip": "The starchy pasta water is the secret — it emulsifies with the oil to create the sauce."},
-            {"step_number": 5, "instruction": "Remove from heat, add chopped parsley, and toss. Serve immediately with parmesan if desired.", "duration_minutes": 1, "tip": None},
-        ],
-        "tags": ["pasta", "quick", "vegetarian", "italian", "weeknight"],
-        "confidence": 1.0,
-        "created_at": "2026-02-08T00:00:00Z",
-    },
-    {
-        "id": "demo-2",
-        "title": "Chicken Teriyaki Rice Bowl",
-        "description": "Juicy teriyaki chicken over fluffy rice with quick-pickled cucumbers and sesame seeds.",
-        "source_url": "https://example.com/teriyaki-bowl",
-        "source_platform": "youtube",
-        "thumbnail_url": None,
-        "servings": "2",
-        "prep_time": "10 min",
-        "cook_time": "20 min",
-        "total_time": "30 min",
-        "difficulty": "easy",
-        "cuisine": "Japanese",
-        "ingredients": [
-            {"item": "chicken thighs", "quantity": "500", "unit": "g", "notes": "boneless, skinless"},
-            {"item": "soy sauce", "quantity": "3", "unit": "tbsp", "notes": None},
-            {"item": "mirin", "quantity": "2", "unit": "tbsp", "notes": None},
-            {"item": "honey", "quantity": "1", "unit": "tbsp", "notes": None},
-            {"item": "rice vinegar", "quantity": "1", "unit": "tsp", "notes": None},
-            {"item": "garlic", "quantity": "2", "unit": "cloves", "notes": "minced"},
-            {"item": "ginger", "quantity": "1", "unit": "tsp", "notes": "freshly grated"},
-            {"item": "jasmine rice", "quantity": "1", "unit": "cup", "notes": None},
-            {"item": "cucumber", "quantity": "1", "unit": "small", "notes": "thinly sliced"},
-            {"item": "sesame seeds", "quantity": "1", "unit": "tbsp", "notes": "for garnish"},
-            {"item": "green onions", "quantity": "2", "unit": "stalks", "notes": "sliced"},
-        ],
-        "steps": [
-            {"step_number": 1, "instruction": "Cook jasmine rice according to package directions.", "duration_minutes": 15, "tip": "Rinse rice 2-3 times until water runs clear for fluffier results."},
-            {"step_number": 2, "instruction": "Mix soy sauce, mirin, honey, rice vinegar, garlic, and ginger in a small bowl to make the teriyaki sauce.", "duration_minutes": 2, "tip": None},
-            {"step_number": 3, "instruction": "Heat a skillet over medium-high heat with a drizzle of oil. Cook chicken thighs for 5-6 minutes per side until golden and cooked through.", "duration_minutes": 12, "tip": "Don't move the chicken — let it develop a nice crust."},
-            {"step_number": 4, "instruction": "Pour teriyaki sauce over chicken. Reduce heat and simmer for 2-3 minutes until sauce thickens and coats the chicken. Slice chicken.", "duration_minutes": 3, "tip": None},
-            {"step_number": 5, "instruction": "Assemble bowls: rice on the bottom, sliced chicken on top, drizzle with extra sauce. Top with cucumber, sesame seeds, and green onions.", "duration_minutes": 2, "tip": None},
-        ],
-        "tags": ["chicken", "rice bowl", "asian", "japanese", "meal prep"],
-        "confidence": 1.0,
-        "created_at": "2026-02-08T00:00:00Z",
-    },
-    {
-        "id": "demo-3",
-        "title": "Classic Chocolate Chip Cookies",
-        "description": "Perfectly chewy chocolate chip cookies with crispy edges and gooey centers. A crowd-pleasing classic.",
-        "source_url": "https://example.com/chocolate-chip-cookies",
-        "source_platform": "tiktok",
-        "thumbnail_url": None,
-        "servings": "24 cookies",
-        "prep_time": "15 min",
-        "cook_time": "12 min",
-        "total_time": "27 min",
-        "difficulty": "easy",
-        "cuisine": "American",
-        "ingredients": [
-            {"item": "all-purpose flour", "quantity": "2 1/4", "unit": "cups", "notes": None},
-            {"item": "butter", "quantity": "1", "unit": "cup", "notes": "softened"},
-            {"item": "granulated sugar", "quantity": "3/4", "unit": "cup", "notes": None},
-            {"item": "brown sugar", "quantity": "3/4", "unit": "cup", "notes": "packed"},
-            {"item": "eggs", "quantity": "2", "unit": "large", "notes": None},
-            {"item": "vanilla extract", "quantity": "1", "unit": "tsp", "notes": None},
-            {"item": "baking soda", "quantity": "1", "unit": "tsp", "notes": None},
-            {"item": "salt", "quantity": "1", "unit": "tsp", "notes": None},
-            {"item": "chocolate chips", "quantity": "2", "unit": "cups", "notes": "semi-sweet"},
-        ],
-        "steps": [
-            {"step_number": 1, "instruction": "Preheat oven to 375°F (190°C). Line baking sheets with parchment paper.", "duration_minutes": 1, "tip": None},
-            {"step_number": 2, "instruction": "Cream softened butter with both sugars until light and fluffy, about 3 minutes.", "duration_minutes": 3, "tip": "Room temperature butter is key — don't microwave it."},
-            {"step_number": 3, "instruction": "Beat in eggs one at a time, then add vanilla extract.", "duration_minutes": 2, "tip": None},
-            {"step_number": 4, "instruction": "In a separate bowl, whisk flour, baking soda, and salt. Gradually add to wet mixture and mix until just combined.", "duration_minutes": 2, "tip": "Don't overmix or cookies will be tough."},
-            {"step_number": 5, "instruction": "Fold in chocolate chips with a spatula.", "duration_minutes": 1, "tip": None},
-            {"step_number": 6, "instruction": "Scoop rounded tablespoons of dough onto prepared baking sheets, spacing 2 inches apart. Bake for 10-12 minutes until edges are golden but centers look slightly underdone.", "duration_minutes": 12, "tip": "They'll firm up as they cool — pull them out when they look just barely done."},
-            {"step_number": 7, "instruction": "Cool on baking sheet for 5 minutes, then transfer to a wire rack.", "duration_minutes": 5, "tip": None},
-        ],
-        "tags": ["dessert", "baking", "cookies", "chocolate", "kid-friendly"],
-        "confidence": 1.0,
-        "created_at": "2026-02-08T00:00:00Z",
-    },
-]
 
 
 # ── Helper: normalize ingredient units (Gemini can't be trusted) ──
@@ -628,12 +515,6 @@ async def get_recipe(recipe_id: str):
         raise HTTPException(status_code=404, detail="Recipe not found")
 
     return _db_row_to_recipe(res.data[0])
-
-
-@router.get("/demo/recipes")
-async def get_demo_recipes():
-    """Return pre-extracted sample recipes for demo mode. No DB needed."""
-    return {"recipes": DEMO_RECIPES, "total": len(DEMO_RECIPES)}
 
 
 # ── Helper: convert DB row to RecipeResponse ──
