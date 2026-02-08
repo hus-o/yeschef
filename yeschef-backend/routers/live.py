@@ -1,131 +1,145 @@
 import os
 import json
-import asyncio
-import base64
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from websockets.exceptions import ConnectionClosed
-from google import genai
-from dependencies import get_gemini_client, get_supabase_client
+from uuid import uuid4
+from datetime import datetime
+from fastapi import APIRouter, HTTPException
+from livekit.api import AccessToken, VideoGrants
 
-router = APIRouter()
+from schemas import LiveTokenRequest, LiveTokenResponse, SessionSummaryResponse
+from dependencies import get_supabase_client, get_gemini_client
 
-# WebSocket endpoint for Live Cooking
-@router.websocket("/live/{recipe_id}")
-async def live_cooking_endpoint(websocket: WebSocket, recipe_id: str):
-    await websocket.accept()
-    
-    supabase = get_supabase_client()
-    
-    # 1. Fetch Recipe Context
-    try:
-        res = supabase.table("recipes").select("*").eq("id", recipe_id).execute()
-        if not res.data:
-            await websocket.close(code=4004, reason="Recipe not found")
-            return
-        recipe = res.data[0]
-    except Exception as e:
-        await websocket.close(code=4000, reason=f"Database error: {e}")
-        return
+router = APIRouter(prefix="/live", tags=["live"])
 
-    # 2. Initialize Gemini Live Connection
-    # We need to replicate the 'client <-> server <-> gemini' proxying.
-    # The Google GenAI SDK `aio.live.connect` is the key.
-    
-    # System Instruction
-    system_instruction = f"""
-    You are YesChef, an enthusiastic and helpful expert cooking assistant.
-    The user is cooking: {recipe['title']}.
-    
-    Recipe Details:
-    Description: {recipe['description']}
-    Ingredients: {json.dumps(recipe['ingredients'])}
-    Steps: {json.dumps(recipe['steps'])}
-    
-    Your goal is to guide them step-by-step.
-    - Be concise and encouraging.
-    - If they ask "What's next?", give them the next step.
-    - If they show you video, analyze it to see if they are doing it right.
-    - You can use tools if available (like setting a timer), but for now just speak.
+LIVEKIT_URL = os.environ.get("LIVEKIT_URL", "")
+LIVEKIT_API_KEY = os.environ.get("LIVEKIT_API_KEY", "")
+LIVEKIT_API_SECRET = os.environ.get("LIVEKIT_API_SECRET", "")
+
+
+@router.post("/token", response_model=LiveTokenResponse)
+async def create_live_token(req: LiveTokenRequest):
     """
+    Generate a LiveKit room token for a cook session.
+    The LiveKit Agent (Phase 2) will auto-join the room and provide
+    Gemini-powered voice guidance.
+    """
+    if not LIVEKIT_API_KEY or not LIVEKIT_API_SECRET:
+        raise HTTPException(status_code=500, detail="LiveKit credentials not configured")
 
-    client = get_gemini_client()
-    model = "gemini-2.5-flash-native-audio-preview-12-2025"
-    config = {"response_modalities": ["AUDIO"]} # We want audio back
+    supabase = get_supabase_client()
 
+    # Fetch recipe to embed as room metadata
+    res = supabase.table("recipes").select("*").eq("id", req.recipe_id).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Recipe not found")
+
+    recipe = res.data[0]
+
+    # Create a unique room name
+    room_name = f"cook-{req.recipe_id[:8]}-{uuid4().hex[:6]}"
+
+    # Build room metadata (the LiveKit Agent reads this)
+    room_metadata = json.dumps({
+        "recipe_id": str(recipe["id"]),
+        "title": recipe.get("title", ""),
+        "description": recipe.get("description", ""),
+        "ingredients": recipe.get("ingredients", []),
+        "steps": recipe.get("steps", []),
+        "servings": recipe.get("servings", ""),
+        "difficulty": recipe.get("difficulty", ""),
+    })
+
+    # Generate participant token
+    token = AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET)
+    token.with_identity(req.user_id)
+    token.with_name(req.user_name)
+    token.with_metadata(json.dumps({"role": "cook"}))
+    token.with_grants(VideoGrants(
+        room_join=True,
+        room=room_name,
+        can_publish=True,
+        can_subscribe=True,
+    ))
+
+    # Create a cook_session record
     try:
-        async with client.aio.live.connect(model=model, config=config) as session:
-            # Send initial context
-            await session.send(input=system_instruction, end_of_turn=True)
-
-            # Concurrent tasks: 
-            # 1. Receive from Client -> Send to Gemini
-            # 2. Receive from Gemini -> Send to Client
-
-            async def receive_from_client():
-                try:
-                    while True:
-                        data = await websocket.receive_json()
-                        # Expected format: { "realtime_input": { "media_chunks": [...] } } or similar
-                        # Or simple { "text": "..." } or { "audio_base64": "..." }
-                        
-                        # We need to map client events to Gemini events.
-                        # Gemini expects `Content` or specific input types.
-                        
-                        if "audio" in data:
-                            # Incoming audio chunk (PCM/Base64)
-                            # Verify format required by Gemini (usually PCM 16kHz)
-                             await session.send(input={"mime_type": "audio/pcm;rate=16000", "data": base64.b64decode(data['audio'])}, end_of_turn=False)
-                        
-                        elif "image" in data:
-                             await session.send(input={"mime_type": "image/jpeg", "data": base64.b64decode(data['image'])}, end_of_turn=False)
-                        
-                        elif "text" in data:
-                            print(f"Client text: {data['text']}")
-                            await session.send(input=data["text"], end_of_turn=True)
-
-                except WebSocketDisconnect:
-                    print("Client disconnected")
-                except Exception as e:
-                    print(f"Error receiving from client: {e}")
-
-            async def receive_from_gemini():
-                try:
-                    async for response in session.receive():
-                        # Response is chunks of audio/text
-                        # We need to forward this to the client
-                        
-                        # The SDK response object structure:
-                        # server_content -> model_turn -> parts
-                        
-                        server_content = response.server_content
-                        if server_content is not None:
-                             model_turn = server_content.model_turn
-                             if model_turn is not None:
-                                 for part in model_turn.parts:
-                                     if part.inline_data:
-                                         # Audio
-                                         audio_b64 = base64.b64encode(part.inline_data.data).decode('utf-8')
-                                         await websocket.send_json({"audio": audio_b64})
-                                     if part.text:
-                                         print(f"Gemini text: {part.text}")
-                                         await websocket.send_json({"text": part.text})
-                        
-                        # Handle tool calls if any... (future)
-                        
-                except Exception as e:
-                    print(f"Error receiving from Gemini: {e}")
-                    await websocket.close()
-
-            # Run both
-            await asyncio.gather(receive_from_client(), receive_from_gemini())
-
+        supabase.table("cook_sessions").insert({
+            "recipe_id": req.recipe_id,
+            "user_id": None,  # No auth in demo mode
+        }).execute()
     except Exception as e:
-        print(f"Live session error: {e}")
-        import traceback
-        with open("server_error.log", "a") as f:
-            f.write(f"\n[{model}] Error: {str(e)}\n")
-            f.write(traceback.format_exc())
-            f.write("-" * 20 + "\n")
-        
-        await websocket.close(code=1011, reason=str(e))
+        print(f"[Live] Failed to create cook_session record: {e}")
+        # Non-fatal — session tracking is nice-to-have
+
+    jwt_token = token.to_jwt()
+
+    return LiveTokenResponse(
+        token=jwt_token,
+        room_name=room_name,
+        livekit_url=LIVEKIT_URL.replace("wss://", "wss://").rstrip("/"),
+    )
+
+
+@router.post("/sessions/{session_id}/summary", response_model=SessionSummaryResponse)
+async def generate_session_summary(session_id: str):
+    """
+    Use Gemini 3 to analyze a cook session transcript and generate a summary.
+    Called when the user ends a cooking session.
+    """
+    supabase = get_supabase_client()
+    gemini = get_gemini_client()
+
+    # Fetch session
+    res = supabase.table("cook_sessions").select("*").eq("id", session_id).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    session = res.data[0]
+    transcript = session.get("transcript", [])
+
+    if not transcript:
+        return SessionSummaryResponse(
+            session_id=session_id,
+            summary="No conversation recorded for this session.",
+            duration_seconds=session.get("duration_seconds"),
+        )
+
+    # Fetch recipe for context
+    recipe_res = supabase.table("recipes").select("title, steps").eq("id", session["recipe_id"]).execute()
+    recipe_title = recipe_res.data[0]["title"] if recipe_res.data else "Unknown recipe"
+    total_steps = len(recipe_res.data[0].get("steps", [])) if recipe_res.data else 0
+
+    # Ask Gemini to summarize
+    transcript_text = json.dumps(transcript)
+    prompt = f"""Analyze this cooking session transcript for the recipe "{recipe_title}".
+
+Transcript:
+{transcript_text[:10000]}
+
+Provide a brief, encouraging summary including:
+1. How far they got in the recipe
+2. Any notable moments or questions
+3. Tips for next time
+Keep it to 2-3 sentences, warm and encouraging tone."""
+
+    response = gemini.models.generate_content(
+        model="gemini-3-flash-preview",
+        contents=prompt,
+    )
+
+    summary = response.text or "Great cooking session!"
+
+    # Update session with summary
+    completed_steps = session.get("completed_steps", [])
+    supabase.table("cook_sessions").update({
+        "summary": summary,
+        "ended_at": datetime.utcnow().isoformat(),
+    }).eq("id", session_id).execute()
+
+    return SessionSummaryResponse(
+        session_id=session_id,
+        summary=summary,
+        duration_seconds=session.get("duration_seconds"),
+        steps_completed=len(completed_steps) if completed_steps else None,
+        total_steps=total_steps or None,
+    )
 
