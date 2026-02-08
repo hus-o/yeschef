@@ -9,6 +9,7 @@ import {
   useLocalParticipant,
   VideoTrack,
 } from "@livekit/components-react";
+import { RoomEvent, Track, type VideoCaptureOptions } from 'livekit-client';
 import "@livekit/components-styles";
 import {
   ChefHat,
@@ -28,6 +29,7 @@ import {
   Volume2,
   Clock,
   AlertCircle,
+  RefreshCcw,
 } from "lucide-react";
 import { api } from "../services/api";
 import { useRecipeStore, type Recipe } from "../store/recipeStore";
@@ -457,6 +459,8 @@ function CookUI({
   const [currentStep, setCurrentStep] = useState(initialStep);
   const [isMuted, setIsMuted] = useState(false);
   const [cameraOn, setCameraOn] = useState(false);
+  const [facingMode, setFacingMode] = useState<"environment" | "user">("environment");
+  const [flipPending, setFlipPending] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(initialElapsed);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -469,6 +473,44 @@ function CookUI({
   useEffect(() => {
     elapsedRef.current = elapsedSeconds;
   }, [elapsedSeconds]);
+
+  // inside CookUI(...)
+  useEffect(() => {
+    if (!room) return;
+
+    const tag = '[LK]';
+
+    const onLocalPub = (pub: any) => console.log(tag, 'LocalTrackPublished', {
+      sid: pub?.trackSid,
+      source: pub?.source,
+      kind: pub?.kind,
+      muted: pub?.isMuted,
+    });
+
+    const onLocalUnpub = (pub: any) => console.log(tag, 'LocalTrackUnpublished', {
+      sid: pub?.trackSid,
+      source: pub?.source,
+      kind: pub?.kind,
+    });
+
+    const onTrackMuted = (pub: any, participant: any) =>
+      console.log(tag, 'TrackMuted', { source: pub?.source, sid: pub?.trackSid, who: participant?.identity });
+
+    const onTrackUnmuted = (pub: any, participant: any) =>
+      console.log(tag, 'TrackUnmuted', { source: pub?.source, sid: pub?.trackSid, who: participant?.identity });
+
+    room.on(RoomEvent.LocalTrackPublished, onLocalPub);
+    room.on(RoomEvent.LocalTrackUnpublished, onLocalUnpub);
+    room.on(RoomEvent.TrackMuted, onTrackMuted);
+    room.on(RoomEvent.TrackUnmuted, onTrackUnmuted);
+
+    return () => {
+      room.off(RoomEvent.LocalTrackPublished, onLocalPub);
+      room.off(RoomEvent.LocalTrackUnpublished, onLocalUnpub);
+      room.off(RoomEvent.TrackMuted, onTrackMuted);
+      room.off(RoomEvent.TrackUnmuted, onTrackUnmuted);
+    };
+  }, [room]);
 
   // Auto-save session on tab close / visibility hidden
   useEffect(() => {
@@ -530,14 +572,75 @@ function CookUI({
   }, [room, isMuted]);
 
   const toggleCamera = useCallback(async () => {
+    const newState = !cameraOn;
+
+    console.log("[UI] toggleCamera click", {
+      from: cameraOn,
+      to: newState,
+      cameraTrackSid: cameraTrack?.trackSid,
+      cameraTrackMuted: cameraTrack?.isMuted,
+    });
+
     try {
-      const newState = !cameraOn;
-      await localParticipant.setCameraEnabled(newState);
-      setCameraOn(newState);
+      if (newState) {
+        const opts: VideoCaptureOptions = {
+          resolution: { width: 768, height: 768 },
+          frameRate: 10,
+          facingMode, // "environment" (back) or "user" (front)
+        };
+
+        await localParticipant.setCameraEnabled(true, opts);
+
+        console.log("[UI] setCameraEnabled done", {
+          cameraTrackSid: cameraTrack?.trackSid,
+          cameraTrackMuted: cameraTrack?.isMuted,
+        });
+        setCameraOn(true);
+      } else {
+        await localParticipant.setCameraEnabled(false);
+        setCameraOn(false);
+      }
     } catch (err) {
       console.error("Camera toggle failed:", err);
     }
-  }, [localParticipant, cameraOn]);
+  }, [localParticipant, cameraOn, facingMode]);
+
+
+  const flipCamera = useCallback(async () => {
+    const next: "environment" | "user" = facingMode === "environment" ? "user" : "environment";
+    setFacingMode(next);
+
+    // If camera is currently off, just store the preference for next time.
+    if (!cameraOn) return;
+    if (!room) return;
+
+    setFlipPending(true);
+    try {
+      // Unpublish current camera track so LiveKit has to create a new one with new constraints.
+      const pub = room.localParticipant.getTrackPublication(Track.Source.Camera);
+      const track = pub?.track;
+
+      if (track) {
+        await room.localParticipant.unpublishTrack(track);
+        // Stop the capturer if possible (prevents the old camera staying “alive”).
+        (track as any).stop?.();
+      }
+
+      const opts: VideoCaptureOptions = {
+        resolution: { width: 768, height: 768 },
+        frameRate: 10,
+        facingMode: next,
+      };
+
+      await room.localParticipant.setCameraEnabled(true, opts);
+      setCameraOn(true);
+    } catch (err) {
+      console.error("Flip camera failed:", err);
+    } finally {
+      setFlipPending(false);
+    }
+  }, [room, cameraOn, facingMode]);
+
 
   const prevStep = () => setCurrentStep((s) => Math.max(0, s - 1));
   const nextStep = () => setCurrentStep((s) => Math.min(totalSteps - 1, s + 1));
@@ -980,7 +1083,7 @@ function CookUI({
               width: "100%",
               height: "100%",
               objectFit: "cover",
-              transform: "scaleX(-1)",
+              transform: facingMode === "user" ? "scaleX(-1)" : "none",
             }}
           />
           <div
@@ -1044,6 +1147,28 @@ function CookUI({
               gap: 4,
             }}
           >
+            <button
+              onClick={flipCamera}
+              disabled={!cameraOn || flipPending}
+              style={{
+                marginTop: 8,
+                width: 44,
+                height: 44,
+                borderRadius: 12,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                border: "none",
+                cursor: !cameraOn || flipPending ? "not-allowed" : "pointer",
+                background: "rgba(255,255,255,0.10)",
+                opacity: !cameraOn || flipPending ? 0.4 : 1,
+              }}
+              aria-label="Flip camera"
+              title="Flip camera"
+            >
+              <RefreshCcw size={18} />
+            </button>
+
             <button
               onClick={toggleCamera}
               style={{
