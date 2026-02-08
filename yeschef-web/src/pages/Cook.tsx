@@ -40,8 +40,13 @@ export default function Cook() {
   const [recipe, setRecipe] = useState<Recipe | null>(null);
   const [tokenData, setTokenData] = useState<LiveKitTokenData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [fetchingToken, setFetchingToken] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sessionEnded, setSessionEnded] = useState(false);
+  const [retryAttempt, setRetryAttempt] = useState(0);
+
+  // Guards against rapid double-clicks firing multiple token requests
+  const fetchingTokenRef = useRef(false);
 
   useEffect(() => {
     if (!id) return;
@@ -76,21 +81,57 @@ export default function Cook() {
       }
 
       setRecipe(r);
-
-      try {
-        const tkn = await api.getLiveToken(id);
-        setTokenData(tkn);
-      } catch (err) {
-        setError(
-          `Could not connect to voice session: ${err instanceof Error ? err.message : "Unknown error"}`,
-        );
-      }
-
       setLoading(false);
     };
 
     init();
   }, [id, recipes]);
+
+  const startVoiceSession = useCallback(async () => {
+    if (!id) return;
+
+    // Prevent concurrent sequences (e.g. rapid double-click)
+    if (fetchingTokenRef.current) return;
+    fetchingTokenRef.current = true;
+
+    setFetchingToken(true);
+    setError(null);
+    setRetryAttempt(0);
+
+    const wait = (ms: number) => new Promise((res) => setTimeout(res, ms));
+
+    try {
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        setRetryAttempt(attempt);
+        try {
+          const tkn = await api.getLiveToken(id);
+          setTokenData(tkn);
+          return;
+        } catch (err: any) {
+          console.error(`Token fetch attempt ${attempt} failed:`, err);
+
+          // Stop immediately on 429 (don't waste retries)
+          if (err?.status === 429) {
+            setError(
+              "Rate limited — please wait a minute before starting a new session.",
+            );
+            return;
+          }
+
+          if (attempt === 3) {
+            setError(err?.message || "Failed to start voice session after 3 attempts.");
+            return;
+          }
+
+          // Exponential backoff: 1s, 2s
+          await wait(1000 * attempt);
+        }
+      }
+    } finally {
+      fetchingTokenRef.current = false;
+      setFetchingToken(false);
+    }
+  }, [id]);
 
   const handleEndSession = useCallback(() => {
     setSessionEnded(true);
@@ -176,27 +217,70 @@ export default function Cook() {
     return (
       <div style={fullScreen}>
         <div style={centeredCol}>
-          <AlertCircle size={40} color="var(--saffron)" />
-          <h3 style={{ marginTop: "var(--space-md)" }}>
-            Voice Session Unavailable
-          </h3>
+          <ChefHat size={48} color="var(--saffron)" />
+          <h2 style={{ marginTop: "var(--space-md)", fontFamily: "var(--font-display)" }}>Ready to Cook?</h2>
           <p
             style={{
-              color: "var(--warm-gray)",
+              color: "var(--charcoal-mid)",
               maxWidth: 340,
               textAlign: "center",
-              fontSize: "0.9rem",
+              fontSize: "0.95rem",
+              marginTop: "var(--space-sm)",
+              lineHeight: 1.6,
             }}
           >
-            The voice AI requires a running backend. Make sure the backend is up
-            at port 8000.
+            Start your voice session to cook <strong>{recipe.title}</strong> with YesChef assistant.
           </p>
-          <button
-            className="btn btn-secondary"
-            onClick={() => navigate(`/recipe/${id}`)}
-          >
-            <ArrowLeft size={16} /> Back to Recipe
-          </button>
+
+          <div style={{ marginTop: "var(--space-xl)", width: "100%", maxWidth: 300 }}>
+            <button
+              className="btn btn-primary btn-lg"
+              onClick={startVoiceSession}
+              disabled={fetchingToken}
+              style={{ width: "100%", gap: 10 }}
+            >
+              {fetchingToken ? (
+                <>
+                  <Loader2 size={18} className="animate-spin" />
+                  {retryAttempt > 1 ? `Retrying (${retryAttempt}/3)...` : "Connecting..."}
+                </>
+              ) : (
+                <>
+                  <Mic size={20} />
+                  Start Voice Session
+                </>
+              )}
+            </button>
+
+            <button
+              className="btn btn-ghost"
+              onClick={() => navigate(`/recipe/${id}`)}
+              disabled={fetchingToken}
+              style={{ width: "100%", marginTop: "var(--space-sm)" }}
+            >
+              Back to Recipe
+            </button>
+          </div>
+
+          {error && (
+            <div
+              style={{
+                marginTop: "var(--space-lg)",
+                padding: "var(--space-md)",
+                background: "rgba(217,79,79,0.08)",
+                borderRadius: "var(--radius-md)",
+                border: "1px solid rgba(217,79,79,0.2)",
+                color: "var(--danger)",
+                fontSize: "0.85rem",
+                maxWidth: 320,
+              }}
+            >
+              <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
+                <span>{error}</span>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
