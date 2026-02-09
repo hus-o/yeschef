@@ -9,7 +9,13 @@ import {
   useLocalParticipant,
   VideoTrack,
 } from "@livekit/components-react";
-import { RoomEvent, Track, type VideoCaptureOptions } from 'livekit-client';
+import {
+  RoomEvent,
+  Track,
+  type VideoCaptureOptions,
+  type TrackPublication,
+  type Participant,
+} from "livekit-client";
 import "@livekit/components-styles";
 import {
   ArrowLeft,
@@ -142,11 +148,13 @@ export default function Cook() {
           const tkn = await api.getLiveToken(id, resumeFromStep ?? undefined);
           setTokenData(tkn);
           return;
-        } catch (err: any) {
+        } catch (err: unknown) {
           console.error(`Token fetch attempt ${attempt} failed:`, err);
 
+          const errObj = err as Record<string, unknown> | undefined;
+
           // Stop immediately on 429 (don't waste retries)
-          if (err?.status === 429) {
+          if (errObj && errObj.status === 429) {
             setError(
               "Rate limited — please wait a minute before starting a new session.",
             );
@@ -155,7 +163,9 @@ export default function Cook() {
 
           if (attempt === 3) {
             setError(
-              err?.message || "Failed to start voice session after 3 attempts.",
+              (errObj && typeof errObj.message === "string"
+                ? errObj.message
+                : null) || "Failed to start voice session after 3 attempts.",
             );
             return;
           }
@@ -168,7 +178,7 @@ export default function Cook() {
       fetchingTokenRef.current = false;
       setFetchingToken(false);
     }
-  }, [id]);
+  }, [id, resumeFromStep]);
 
   const handleEndSession = useCallback(() => {
     if (id) clearSavedSession(id);
@@ -187,7 +197,16 @@ export default function Cook() {
     return (
       <div style={fullScreen}>
         <div style={centeredCol}>
-          <img src="/logo.png" alt="YesChef Logo" style={{ width: 64, height: 64, objectFit: 'contain', animation: "pulse 2s ease infinite" }} />
+          <img
+            src="/logo.png"
+            alt="YesChef Logo"
+            style={{
+              width: 64,
+              height: 64,
+              objectFit: "contain",
+              animation: "pulse 2s ease infinite",
+            }}
+          />
           <h2 style={{ marginTop: "var(--space-lg)", fontSize: "1.3rem" }}>
             Setting up your kitchen…
           </h2>
@@ -258,7 +277,11 @@ export default function Cook() {
     return (
       <div style={fullScreen}>
         <div style={centeredCol}>
-          <img src="/logo.png" alt="YesChef Logo" style={{ width: 80, height: 80, objectFit: 'contain' }} />
+          <img
+            src="/logo.png"
+            alt="YesChef Logo"
+            style={{ width: 80, height: 80, objectFit: "contain" }}
+          />
           <h2
             style={{
               marginTop: "var(--space-md)",
@@ -454,7 +477,9 @@ function CookUI({
   const [currentStep, setCurrentStep] = useState(initialStep);
   const [isMuted, setIsMuted] = useState(false);
   const [cameraOn, setCameraOn] = useState(false);
-  const [facingMode, setFacingMode] = useState<"environment" | "user">("environment");
+  const [facingMode, setFacingMode] = useState<"environment" | "user">(
+    "environment",
+  );
   const [flipPending, setFlipPending] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(initialElapsed);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -473,26 +498,36 @@ function CookUI({
   useEffect(() => {
     if (!room) return;
 
-    const tag = '[LK]';
+    const tag = "[LK]";
 
-    const onLocalPub = (pub: any) => console.log(tag, 'LocalTrackPublished', {
-      sid: pub?.trackSid,
-      source: pub?.source,
-      kind: pub?.kind,
-      muted: pub?.isMuted,
-    });
+    const onLocalPub = (pub: TrackPublication) =>
+      console.log(tag, "LocalTrackPublished", {
+        sid: pub?.trackSid,
+        source: pub?.source,
+        kind: pub?.kind,
+        muted: pub?.isMuted,
+      });
 
-    const onLocalUnpub = (pub: any) => console.log(tag, 'LocalTrackUnpublished', {
-      sid: pub?.trackSid,
-      source: pub?.source,
-      kind: pub?.kind,
-    });
+    const onLocalUnpub = (pub: TrackPublication) =>
+      console.log(tag, "LocalTrackUnpublished", {
+        sid: pub?.trackSid,
+        source: pub?.source,
+        kind: pub?.kind,
+      });
 
-    const onTrackMuted = (pub: any, participant: any) =>
-      console.log(tag, 'TrackMuted', { source: pub?.source, sid: pub?.trackSid, who: participant?.identity });
+    const onTrackMuted = (pub: TrackPublication, participant: Participant) =>
+      console.log(tag, "TrackMuted", {
+        source: pub?.source,
+        sid: pub?.trackSid,
+        who: participant?.identity,
+      });
 
-    const onTrackUnmuted = (pub: any, participant: any) =>
-      console.log(tag, 'TrackUnmuted', { source: pub?.source, sid: pub?.trackSid, who: participant?.identity });
+    const onTrackUnmuted = (pub: TrackPublication, participant: Participant) =>
+      console.log(tag, "TrackUnmuted", {
+        source: pub?.source,
+        sid: pub?.trackSid,
+        who: participant?.identity,
+      });
 
     room.on(RoomEvent.LocalTrackPublished, onLocalPub);
     room.on(RoomEvent.LocalTrackUnpublished, onLocalUnpub);
@@ -558,18 +593,21 @@ function CookUI({
   };
 
   const sendControl = useCallback(
-    (msg: any) => {
+    (msg: Record<string, unknown>) => {
       try {
         if (!room) return;
         if (connectionState !== "connected") return;
 
         const payload = new TextEncoder().encode(JSON.stringify(msg));
-        room.localParticipant.publishData(payload, { reliable: true, topic: "yeschef" });
+        room.localParticipant.publishData(payload, {
+          reliable: true,
+          topic: "yeschef",
+        });
       } catch (e) {
         console.warn("[UI] publishData failed", e);
       }
     },
-    [room, connectionState]
+    [room, connectionState],
   );
 
   useEffect(() => {
@@ -622,9 +660,9 @@ function CookUI({
     }
   }, [localParticipant, cameraOn, facingMode, cameraTrack, sendControl]);
 
-
   const flipCamera = useCallback(async () => {
-    const next: "environment" | "user" = facingMode === "environment" ? "user" : "environment";
+    const next: "environment" | "user" =
+      facingMode === "environment" ? "user" : "environment";
     setFacingMode(next);
 
     // If camera is currently off, just store the preference for next time.
@@ -634,13 +672,15 @@ function CookUI({
     setFlipPending(true);
     try {
       // Unpublish current camera track so LiveKit has to create a new one with new constraints.
-      const pub = room.localParticipant.getTrackPublication(Track.Source.Camera);
+      const pub = room.localParticipant.getTrackPublication(
+        Track.Source.Camera,
+      );
       const track = pub?.track;
 
       if (track) {
         await room.localParticipant.unpublishTrack(track);
         // Stop the capturer if possible (prevents the old camera staying “alive”).
-        (track as any).stop?.();
+        if ("stop" in track && typeof track.stop === "function") track.stop();
       }
 
       const opts: VideoCaptureOptions = {
@@ -657,7 +697,6 @@ function CookUI({
       setFlipPending(false);
     }
   }, [room, cameraOn, facingMode]);
-
 
   const prevStep = () => setCurrentStep((s) => Math.max(0, s - 1));
   const nextStep = () => setCurrentStep((s) => Math.min(totalSteps - 1, s + 1));
@@ -725,7 +764,11 @@ function CookUI({
             overflow: "hidden",
           }}
         >
-          <img src="/banner-logo.png" alt="YesChef Logo" style={{ height: 48, objectFit: 'contain', flexShrink: 0 }} />
+          <img
+            src="/banner-logo.png"
+            alt="YesChef Logo"
+            style={{ height: 48, objectFit: "contain", flexShrink: 0 }}
+          />
           <span
             style={{
               fontFamily: "var(--font-display)",
@@ -1095,7 +1138,11 @@ function CookUI({
           }}
         >
           <VideoTrack
-            trackRef={{ participant: localParticipant, publication: cameraTrack, source: cameraTrack.source }}
+            trackRef={{
+              participant: localParticipant,
+              publication: cameraTrack,
+              source: cameraTrack.source,
+            }}
             style={{
               width: "100%",
               height: "100%",

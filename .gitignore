@@ -16,9 +16,6 @@ node_modules/
 dist/
 .vite/
 
-# Expo / React Native (reference only — not part of Gemini 3 submission)
-rork-yeschef--ai-cooking-assistant/
-
 # IDE
 .idea/
 .vscode/
@@ -29,9 +26,6 @@ rork-yeschef--ai-cooking-assistant/
 .DS_Store
 Thumbs.db
 
-# Local plans
-EXECUTION-PLAN.md
-yeschef-plan.md
-
 # Build artifacts
 *.log
+.ruff_cache/

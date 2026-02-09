@@ -1,5 +1,5 @@
 import { Clock, Users, ArrowRight, Pause } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import type { Recipe } from "../store/recipeStore";
 
 interface SavedSession {
@@ -15,23 +15,21 @@ interface RecipeCardProps {
 }
 
 export default function RecipeCard({ recipe, onClick }: RecipeCardProps) {
-  const [pausedStep, setPausedStep] = useState<number | null>(null);
-
-  useEffect(() => {
+  const [pausedStep] = useState<number | null>(() => {
     try {
       const raw = localStorage.getItem("yeschef-session-" + recipe.id);
-      if (!raw) return;
+      if (!raw) return null;
       const s: SavedSession = JSON.parse(raw);
       // Check 4-hour expiry
       if (Date.now() - s.pausedAt > 4 * 60 * 60 * 1000) {
         localStorage.removeItem("yeschef-session-" + recipe.id);
-        return;
+        return null;
       }
-      setPausedStep(s.currentStep + 1); // Display as 1-indexed
+      return s.currentStep + 1; // Display as 1-indexed
     } catch {
-      // ignore
+      return null;
     }
-  }, [recipe.id]);
+  });
 
   // Generate a warm gradient as placeholder when no thumbnail
   const gradients = [
@@ -89,8 +87,8 @@ export default function RecipeCard({ recipe, onClick }: RecipeCardProps) {
             style={{
               height: 48,
               opacity: 0.25,
-              objectFit: 'contain',
-              filter: 'brightness(0) invert(1)' // Make it white-ish to match previous icon feel
+              objectFit: "contain",
+              filter: "brightness(0) invert(1)", // Make it white-ish to match previous icon feel
             }}
           />
         )}
