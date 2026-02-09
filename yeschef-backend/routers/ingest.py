@@ -208,10 +208,34 @@ async def fetch_content(url: str, platform: str) -> tuple[str, str]:
 
             if hasattr(transcript_data, "content") and transcript_data.content:
                 raw_transcript = transcript_data.content
+            elif hasattr(transcript_data, "job_id") and transcript_data.job_id:
+                # Async job (HTTP 202) — poll until completed or failed
+                print(f"[Supadata] Async transcript job started: {transcript_data.job_id}")
+                import asyncio
+                max_polls = 120  # 2 minutes at 1s intervals
+                for poll_i in range(max_polls):
+                    await asyncio.sleep(1)
+                    job_result = client.transcript.get_batch_results(job_id=transcript_data.job_id)
+                    status = getattr(job_result, "status", None)
+                    if status == "completed":
+                        raw_transcript = getattr(job_result, "content", "") or ""
+                        if not raw_transcript:
+                            raise ValueError("Supadata job completed but returned no content")
+                        print(f"[Supadata] Async job completed after {poll_i + 1}s")
+                        break
+                    elif status == "failed":
+                        error_detail = getattr(job_result, "error", "unknown error")
+                        print(f"[Supadata] Async job failed: {error_detail}")
+                        raise ValueError(f"Supadata transcription job failed: {error_detail}")
+                    # else queued/active — keep polling
+                else:
+                    raise ValueError("VIDEO_TOO_LONG")
             elif isinstance(transcript_data, str):
                 raw_transcript = transcript_data
             else:
                 raise ValueError(f"Unexpected transcript format: {type(transcript_data)}")
+        except ValueError:
+            raise  # Re-raise our own ValueErrors (including VIDEO_TOO_LONG)
         except Exception as e:
             print(f"[Supadata] Transcript error: {e}")
             raise ValueError(f"Could not get transcript from {platform} URL: {e}") from e
@@ -367,9 +391,10 @@ IMPORTANT: The transcript below may contain words with broken spacing (e.g., "Ho
         extraction: ExtractionResult = response.parsed
 
         if not extraction.is_valid_content or not extraction.recipes:
+            print(f"[Ingest] Job {job_id} — no recipe found. Reason: {extraction.rejection_reason}")
             supabase.table("jobs").update({
                 "status": "failed",
-                "error": extraction.rejection_reason or "No valid recipes found in content",
+                "error": "NO_RECIPE",
                 "updated_at": datetime.utcnow().isoformat(),
             }).eq("id", job_id).execute()
             return
@@ -419,9 +444,11 @@ IMPORTANT: The transcript below may contain words with broken spacing (e.g., "Ho
     except Exception as e:
         print(f"[Ingest] Job {job_id} failed: {e}")
         traceback.print_exc()
+        # Map to user-safe error codes — raw details stay in server logs only
+        error_code = "VIDEO_TOO_LONG" if str(e) == "VIDEO_TOO_LONG" else "SERVICE_ERROR"
         supabase.table("jobs").update({
             "status": "failed",
-            "error": str(e)[:500],
+            "error": error_code,
             "updated_at": datetime.utcnow().isoformat(),
         }).eq("id", job_id).execute()
 

@@ -104,7 +104,16 @@ export default function Home() {
           } else if (job.status === "failed") {
             if (pollRef.current) clearInterval(pollRef.current);
             setExtracting(false);
-            setError(job.error || "Extraction failed. Please try another URL.");
+            const errorMessages: Record<string, string> = {
+              NO_RECIPE:
+                "We couldn't find a recipe at that link. Please try a different URL.",
+              VIDEO_TOO_LONG:
+                "This video is too long to process. Please try a shorter one.",
+            };
+            setError(
+              errorMessages[job.error] ||
+                "Oops, something went wrong. Please try again later.",
+            );
           }
         } catch {
           // Network blip, keep polling
@@ -168,7 +177,11 @@ export default function Home() {
             gap: "var(--space-sm)",
           }}
         >
-          <img src="/banner-logo.png" alt="YesChef Logo" style={{ height: 64, objectFit: 'contain' }} />
+          <img
+            src="/banner-logo.png"
+            alt="YesChef Logo"
+            style={{ height: 64, objectFit: "contain" }}
+          />
         </div>
       </header>
 
@@ -439,7 +452,11 @@ export default function Home() {
                 justifyContent: "center",
               }}
             >
-              <img src="/logo.png" alt="YesChef Logo" style={{ width: 44, height: 44, objectFit: 'contain' }} />
+              <img
+                src="/logo.png"
+                alt="YesChef Logo"
+                style={{ width: 44, height: 44, objectFit: "contain" }}
+              />
             </div>
             <div>
               <h3
@@ -583,7 +600,11 @@ export default function Home() {
             gap: 6,
           }}
         >
-          <img src="/logo.png" alt="YesChef" style={{ width: 14, height: 14, objectFit: 'contain' }} />
+          <img
+            src="/logo.png"
+            alt="YesChef"
+            style={{ width: 14, height: 14, objectFit: "contain" }}
+          />
           YesChef — AI Cooking Assistant
         </span>
       </footer>

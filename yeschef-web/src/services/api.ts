@@ -7,25 +7,25 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url }),
     });
-    if (!res.ok) throw new Error(`Extraction failed: ${res.statusText}`);
+    if (!res.ok) throw new Error("Oops, something went wrong.");
     return res.json();
   },
 
   getJob: async (jobId: string) => {
     const res = await fetch(`${API_URL}/jobs/${jobId}`);
-    if (!res.ok) throw new Error(`Job fetch failed: ${res.statusText}`);
+    if (!res.ok) throw new Error("Oops, something went wrong.");
     return res.json();
   },
 
   getRecipes: async () => {
     const res = await fetch(`${API_URL}/recipes`);
-    if (!res.ok) throw new Error(`Recipes fetch failed: ${res.statusText}`);
+    if (!res.ok) throw new Error("Oops, something went wrong.");
     return res.json();
   },
 
   getRecipe: async (id: string) => {
     const res = await fetch(`${API_URL}/recipes/${id}`);
-    if (!res.ok) throw new Error(`Recipe fetch failed: ${res.statusText}`);
+    if (!res.ok) throw new Error("Oops, something went wrong.");
     return res.json();
   },
 
@@ -38,7 +38,7 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    if (!res.ok) throw new Error(`Token fetch failed: ${res.statusText}`);
+    if (!res.ok) throw new Error("Oops, something went wrong.");
     return res.json();
   },
 };

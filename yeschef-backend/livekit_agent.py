@@ -415,19 +415,25 @@ async def entrypoint(ctx: JobContext):
     def on_track_muted(
         participant: rtc.Participant, publication: rtc.TrackPublication
     ):
-        if getattr(publication, "kind", None) != rtc.TrackKind.KIND_VIDEO:
-            return
-        logger.info("[video] track muted")
-        request_camera_state(False)
+        kind = getattr(publication, "kind", None)
+        if kind == rtc.TrackKind.KIND_VIDEO:
+            logger.info("[video] track muted")
+            request_camera_state(False)
+        elif kind == rtc.TrackKind.KIND_AUDIO:
+            logger.info("[audio] track muted — disabling audio input to model")
+            session.input.set_audio_enabled(False)
 
     @ctx.room.on("track_unmuted")
     def on_track_unmuted(
         participant: rtc.Participant, publication: rtc.TrackPublication
     ):
-        if getattr(publication, "kind", None) != rtc.TrackKind.KIND_VIDEO:
-            return
-        logger.info("[video] track unmuted")
-        request_camera_state(True)
+        kind = getattr(publication, "kind", None)
+        if kind == rtc.TrackKind.KIND_VIDEO:
+            logger.info("[video] track unmuted")
+            request_camera_state(True)
+        elif kind == rtc.TrackKind.KIND_AUDIO:
+            logger.info("[audio] track unmuted — enabling audio input to model")
+            session.input.set_audio_enabled(True)
 
     @ctx.room.on("data_received")
     def on_data(data_packet: rtc.DataPacket):
