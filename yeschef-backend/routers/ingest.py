@@ -10,6 +10,7 @@ from schemas import (
     JobStatus, ExtractionResult, ExtractRequest, RecipeResponse, RecipeListResponse,
 )
 from dependencies import get_supabase_client, get_gemini_client
+from firecrawl import Firecrawl
 
 router = APIRouter()
 
@@ -245,9 +246,8 @@ async def fetch_content(url: str, platform: str) -> tuple[str, str]:
 
     else:
         # Firecrawl for general web pages
-        from firecrawl import FirecrawlApp
-        app = FirecrawlApp(api_key=FIRECRAWL_API_KEY)
-        scrape_result = app.scrape(url, formats=["markdown"])
+        firecrawl = Firecrawl(api_key=FIRECRAWL_API_KEY)
+        scrape_result = firecrawl.scrape(url, formats=["markdown"])
         content = scrape_result.markdown or ""
         if not content:
             raise ValueError("Firecrawl returned empty content for this URL.")
