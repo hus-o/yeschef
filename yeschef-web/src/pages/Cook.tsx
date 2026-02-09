@@ -12,7 +12,6 @@ import {
 import { RoomEvent, Track, type VideoCaptureOptions } from 'livekit-client';
 import "@livekit/components-styles";
 import {
-  ChefHat,
   ArrowLeft,
   Mic,
   MicOff,
@@ -188,11 +187,7 @@ export default function Cook() {
     return (
       <div style={fullScreen}>
         <div style={centeredCol}>
-          <ChefHat
-            size={44}
-            color="var(--saffron)"
-            style={{ animation: "pulse 2s ease infinite" }}
-          />
+          <img src="/logo.png" alt="YesChef Logo" style={{ width: 64, height: 64, objectFit: 'contain', animation: "pulse 2s ease infinite" }} />
           <h2 style={{ marginTop: "var(--space-lg)", fontSize: "1.3rem" }}>
             Setting up your kitchen…
           </h2>
@@ -263,7 +258,7 @@ export default function Cook() {
     return (
       <div style={fullScreen}>
         <div style={centeredCol}>
-          <ChefHat size={48} color="var(--saffron)" />
+          <img src="/logo.png" alt="YesChef Logo" style={{ width: 80, height: 80, objectFit: 'contain' }} />
           <h2
             style={{
               marginTop: "var(--space-md)",
@@ -730,7 +725,7 @@ function CookUI({
             overflow: "hidden",
           }}
         >
-          <ChefHat size={16} color="var(--saffron)" style={{ flexShrink: 0 }} />
+          <img src="/banner-logo.png" alt="YesChef Logo" style={{ height: 48, objectFit: 'contain', flexShrink: 0 }} />
           <span
             style={{
               fontFamily: "var(--font-display)",
@@ -774,7 +769,7 @@ function CookUI({
         }}
       >
         {/* Step Card */}
-        <div style={{ maxWidth: 640, margin: "0 auto", width: "100%" }}>
+        <div style={{ maxWidth: 800, margin: "0 auto", width: "100%" }}>
           {/* Step indicator */}
           <div
             style={{

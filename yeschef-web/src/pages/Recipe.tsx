@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import {
-  ChefHat,
   ArrowLeft,
   Clock,
   Users,
@@ -146,12 +145,7 @@ export default function Recipe() {
             gap: "var(--space-sm)",
           }}
         >
-          <ChefHat size={22} color="var(--saffron)" />
-          <span
-            style={{ fontFamily: "var(--font-display)", fontSize: "1.2rem" }}
-          >
-            YesChef
-          </span>
+          <img src="/banner-logo.png" alt="YesChef Logo" style={{ height: 56, objectFit: 'contain' }} />
         </div>
       </header>
 
@@ -188,16 +182,7 @@ export default function Recipe() {
             }}
           >
             {!recipe.thumbnail_url && (
-              <ChefHat
-                size={48}
-                color="rgba(255,255,255,0.2)"
-                style={{
-                  position: "absolute",
-                  top: "50%",
-                  left: "50%",
-                  transform: "translate(-50%,-50%)",
-                }}
-              />
+              <img src="/logo.png" alt="YesChef Logo" style={{ width: 64, height: 64, objectFit: 'contain', opacity: 0.2, position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)" }} />
             )}
           </div>
 
@@ -337,7 +322,48 @@ export default function Recipe() {
           </div>
         </div>
 
-        {/* ── Two-Column → Single-Column Layout (CSS class) ── */}
+        {/* ── Ready to Cook CTA (Moved out of grid to fix desktop layout) ── */}
+        <div style={{ marginTop: "var(--space-xl)", marginBottom: "var(--space-xl)" }}>
+          <div
+            style={{
+              background:
+                "linear-gradient(135deg, rgba(232,148,10,0.08), rgba(199,91,57,0.05))",
+              borderRadius: "var(--radius-lg)",
+              padding: "var(--space-lg)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "var(--space-md)",
+              flexWrap: "wrap",
+            }}
+          >
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <h3 style={{ marginBottom: 4, fontSize: "1.05rem" }}>
+                Ready to cook?
+              </h3>
+              <p
+                style={{
+                  fontSize: "0.85rem",
+                  color: "var(--warm-gray)",
+                  margin: 0,
+                }}
+              >
+                YesChef will guide you step-by-step with AI voice assistance.
+              </p>
+            </div>
+            <button
+              className="btn btn-primary"
+              onClick={() => navigate(`/cook/${recipe.id}`)}
+              style={{ gap: 8, whiteSpace: "nowrap" }}
+            >
+              <PlayCircle size={18} />
+              Start Cooking
+              <ChevronRight size={16} />
+            </button>
+          </div>
+        </div>
+
+        {/* ── Two-Column → Single-Column Layout (Ingredients & Steps) ── */}
         <div className="recipe-layout">
           {/* Ingredients */}
           <div>
@@ -367,47 +393,6 @@ export default function Recipe() {
                 ingredients={recipe.ingredients}
                 onToggle={(i) => toggleIngredient(recipe.id, i)}
               />
-            </div>
-          </div>
-
-          {/* Ready to Cook CTA (between ingredients & steps) */}
-          <div style={{ gridColumn: "1 / -1" }}>
-            <div
-              style={{
-                background:
-                  "linear-gradient(135deg, rgba(232,148,10,0.08), rgba(199,91,57,0.05))",
-                borderRadius: "var(--radius-lg)",
-                padding: "var(--space-lg)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: "var(--space-md)",
-                flexWrap: "wrap",
-              }}
-            >
-              <div style={{ flex: 1, minWidth: 200 }}>
-                <h3 style={{ marginBottom: 4, fontSize: "1.05rem" }}>
-                  Ready to cook?
-                </h3>
-                <p
-                  style={{
-                    fontSize: "0.85rem",
-                    color: "var(--warm-gray)",
-                    margin: 0,
-                  }}
-                >
-                  YesChef will guide you step-by-step with AI voice assistance.
-                </p>
-              </div>
-              <button
-                className="btn btn-primary"
-                onClick={() => navigate(`/cook/${recipe.id}`)}
-                style={{ gap: 8, whiteSpace: "nowrap" }}
-              >
-                <PlayCircle size={18} />
-                Start Cooking
-                <ChevronRight size={16} />
-              </button>
             </div>
           </div>
 

@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  ChefHat,
   Link as LinkIcon,
   ArrowRight,
   Loader2,
@@ -169,34 +168,7 @@ export default function Home() {
             gap: "var(--space-sm)",
           }}
         >
-          <ChefHat size={26} color="var(--saffron)" strokeWidth={2.2} />
-          <span
-            style={{
-              fontFamily: "var(--font-display)",
-              fontSize: "1.35rem",
-              color: "var(--charcoal)",
-            }}
-          >
-            YesChef
-          </span>
-        </div>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "var(--space-xs)",
-          }}
-        >
-          <Mic size={14} color="var(--warm-gray)" />
-          <span
-            style={{
-              fontSize: "0.72rem",
-              color: "var(--warm-gray)",
-              fontWeight: 500,
-            }}
-          >
-            Powered by Gemini
-          </span>
+          <img src="/banner-logo.png" alt="YesChef Logo" style={{ height: 64, objectFit: 'contain' }} />
         </div>
       </header>
 
@@ -467,7 +439,7 @@ export default function Home() {
                 justifyContent: "center",
               }}
             >
-              <ChefHat size={32} color="var(--saffron)" strokeWidth={1.5} />
+              <img src="/logo.png" alt="YesChef Logo" style={{ width: 44, height: 44, objectFit: 'contain' }} />
             </div>
             <div>
               <h3
@@ -552,7 +524,7 @@ export default function Home() {
               {
                 icon: <Sparkles size={26} color="var(--terracotta)" />,
                 title: "AI Extracts It",
-                desc: "Gemini reads the content and structures a clean recipe with ingredients & steps.",
+                desc: "YesChef reads the content and structures a clean recipe with ingredients & steps.",
               },
               {
                 icon: <Mic size={26} color="var(--olive)" />,
@@ -611,8 +583,8 @@ export default function Home() {
             gap: 6,
           }}
         >
-          <ChefHat size={14} />
-          YesChef — Built with Gemini &amp; LiveKit
+          <img src="/logo.png" alt="YesChef" style={{ width: 14, height: 14, objectFit: 'contain' }} />
+          YesChef — AI Cooking Assistant
         </span>
       </footer>
     </div>
