@@ -15,6 +15,9 @@ Requires env vars: LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET, GOOGLE_API_
 import json
 import logging
 from dotenv import load_dotenv
+import asyncio
+import time
+from livekit import rtc
 from livekit.agents import (
     Agent,
     AgentSession,
@@ -121,7 +124,10 @@ CAMERA / VIDEO:
 - You can OCCASIONALLY ask the user to show you something by saying "Can you show me that? Tap the camera button so I can take a look"
 - Good moments to ask: checking colour/doneness of meat, whether onions are caramelised enough, if dough has the right consistency, confirming a knife cut size, checking if oil is hot enough
 - When you receive video, give specific visual feedback: comment on colour, texture, size, doneness — be genuinely helpful
-- Do NOT ask for camera every step — only when visual confirmation would genuinely help (maybe 2-3 times per recipe)
+- Only claim you can see something if you are receiving live video right now.
+- If you are not receiving live video, say you can't see yet and ask the user to tap the camera button.
+- If asked "what can you see?" or anything related to seeing/confirming visually with no live video, do not guess or infer — ask them to enable the camera.
+- Do NOT ask for camera every step — only when visual confirmation would genuinely help
 - If the user shows you something without being asked, respond helpfully about what you see"""
 
         super().__init__(instructions=instructions)
@@ -156,6 +162,22 @@ async def entrypoint(ctx: JobContext):
     title = recipe_data.get("title", "something delicious")
     resume_from_step = recipe_data.get("resume_from_step")  # None or int (1-indexed)
 
+    # ── Vision state (robust anti-hallucination gating) ──────────────────────
+    vision = {
+        "declared_on": False,      # from frontend data packets
+        "last_declared_ts": 0.0,
+        "last_frame_ts": 0.0,      # from actual received video frames
+        "has_sent_frames_on": False,
+    }
+
+    video_stream = None
+    video_task: asyncio.Task | None = None
+
+    def vision_available() -> bool:
+        if not vision["declared_on"]:
+            return False
+        return (time.time() - vision["last_frame_ts"]) < 2.0
+
     # Configure Gemini 2.5 Flash native audio for real-time voice
     session = AgentSession(
         llm=google.beta.realtime.RealtimeModel(
@@ -166,6 +188,83 @@ async def entrypoint(ctx: JobContext):
             proactivity=True,
         ),
     )
+
+    async def maybe_announce_vision_state(reason: str):
+        """Push current vision state into the model context (soft enforcement)."""
+        status = "VISION_AVAILABLE=true" if vision_available() else "VISION_AVAILABLE=false"
+        await session.generate_reply(
+            instructions=(
+                f"{status}. In 1 short sentence, update the user about camera/vision availability "
+                f"(reason: {reason}). If vision is unavailable, ask them to tap the camera button."
+            )
+        )
+
+    @ctx.room.on("data_received")
+    def on_data(data_packet: rtc.DataPacket):
+        try:
+            if getattr(data_packet, "topic", None) != "yeschef":
+                return
+            msg = json.loads(data_packet.data.decode("utf-8"))
+            if msg.get("type") == "camera_state":
+                new_declared = bool(msg.get("on"))
+                if new_declared != vision["declared_on"]:
+                    vision["declared_on"] = new_declared
+                    vision["last_declared_ts"] = time.time()
+                    vision["has_sent_frames_on"] = False
+                    logger.info(f"[control] camera_state declared_on={vision['declared_on']}")
+                    # Announce off immediately; announce on only after real frames arrive.
+                    if not new_declared:
+                        asyncio.create_task(maybe_announce_vision_state(reason="camera_off"))
+        except Exception as e:
+            logger.warning(f"[control] data_received parse error: {e}")
+
+    async def _frame_loop(stream: rtc.VideoStream):
+        async for _ev in stream:
+            vision["last_frame_ts"] = time.time()
+            # First-frame announcement after camera declared on.
+            if vision["declared_on"] and not vision["has_sent_frames_on"]:
+                vision["has_sent_frames_on"] = True
+                asyncio.create_task(maybe_announce_vision_state(reason="first_video_frame"))
+
+    @ctx.room.on("track_subscribed")
+    def on_track_subscribed(
+        track: rtc.Track,
+        publication: rtc.RemoteTrackPublication,
+        participant: rtc.RemoteParticipant,
+    ):
+        nonlocal video_stream, video_task
+        try:
+            if track.kind != rtc.TrackKind.KIND_VIDEO:
+                return
+            logger.info(f"[video] subscribed sid={publication.sid} from={participant.identity}")
+            video_stream = rtc.VideoStream.from_track(track=track)
+            video_task = asyncio.create_task(_frame_loop(video_stream))
+        except Exception as e:
+            logger.warning(f"[video] track_subscribed handler error: {e}")
+
+    @ctx.room.on("track_unsubscribed")
+    def on_track_unsubscribed(
+        track: rtc.Track,
+        publication: rtc.RemoteTrackPublication,
+        participant: rtc.RemoteParticipant,
+    ):
+        nonlocal video_stream, video_task
+        try:
+            if track.kind != rtc.TrackKind.KIND_VIDEO:
+                return
+            logger.info(
+                f"[video] unsubscribed sid={publication.sid} from={participant.identity}"
+            )
+            vision["last_frame_ts"] = 0.0
+            vision["has_sent_frames_on"] = False
+            if video_task:
+                video_task.cancel()
+                video_task = None
+            if video_stream:
+                asyncio.create_task(video_stream.aclose())
+                video_stream = None
+        except Exception as e:
+            logger.warning(f"[video] track_unsubscribed handler error: {e}")
 
     # Start the session with our cooking agent
     await session.start(
@@ -180,15 +279,23 @@ async def entrypoint(ctx: JobContext):
     await ctx.connect()
 
     # Send an initial greeting to kick things off
+    status = "VISION_AVAILABLE=true" if vision_available() else "VISION_AVAILABLE=false"
+
     if resume_from_step:
         await session.generate_reply(
-            instructions=f"Welcome the user back! They paused while cooking {title} and are resuming at step {resume_from_step}. Briefly remind them what step {resume_from_step} is about and ask if they're ready to continue. Keep it warm and brief — 2 sentences max."
+            instructions=(
+                f"{status}. Welcome the user back! They paused while cooking {title} and are resuming at step {resume_from_step}. "
+                f"Briefly remind them what step {resume_from_step} is about and ask if they're ready to continue. "
+                f"Keep it warm and brief — 2 sentences max."
+            )
         )
     else:
         await session.generate_reply(
-            instructions=f"Greet the user warmly. Tell them you're YesChef and you're excited to help them make {title}. Ask if they have their ingredients ready. Keep it brief and energetic — 2 sentences max."
+            instructions=(
+                f"{status}. Greet the user warmly. Tell them you're YesChef and you're excited to help them make {title}. "
+                f"Ask if they have their ingredients ready. Keep it brief and energetic — 2 sentences max."
+            )
         )
-
 
 # ---------------------------------------------------------------------------
 # Main

@@ -562,6 +562,25 @@ function CookUI({
     return `${m}:${sec.toString().padStart(2, "0")}`;
   };
 
+  const sendControl = useCallback(
+    (msg: any) => {
+      try {
+        if (!room) return;
+        if (connectionState !== "connected") return;
+
+        const payload = new TextEncoder().encode(JSON.stringify(msg));
+        room.localParticipant.publishData(payload, { reliable: true, topic: "yeschef" });
+      } catch (e) {
+        console.warn("[UI] publishData failed", e);
+      }
+    },
+    [room, connectionState]
+  );
+
+  useEffect(() => {
+    sendControl({ type: "camera_state", on: cameraOn, ts: Date.now() });
+  }, [cameraOn, sendControl]);
+
   const toggleMute = useCallback(async () => {
     try {
       await room.localParticipant.setMicrophoneEnabled(isMuted);
@@ -586,7 +605,7 @@ function CookUI({
         const opts: VideoCaptureOptions = {
           resolution: { width: 768, height: 768 },
           frameRate: 10,
-          facingMode, // "environment" (back) or "user" (front)
+          facingMode,
         };
 
         await localParticipant.setCameraEnabled(true, opts);
@@ -595,15 +614,18 @@ function CookUI({
           cameraTrackSid: cameraTrack?.trackSid,
           cameraTrackMuted: cameraTrack?.isMuted,
         });
+
         setCameraOn(true);
+        sendControl({ type: "camera_state", on: true, ts: Date.now() });
       } else {
         await localParticipant.setCameraEnabled(false);
         setCameraOn(false);
+        sendControl({ type: "camera_state", on: false, ts: Date.now() });
       }
     } catch (err) {
       console.error("Camera toggle failed:", err);
     }
-  }, [localParticipant, cameraOn, facingMode]);
+  }, [localParticipant, cameraOn, facingMode, cameraTrack, sendControl]);
 
 
   const flipCamera = useCallback(async () => {
@@ -1147,62 +1169,70 @@ function CookUI({
               gap: 4,
             }}
           >
-            <button
-              onClick={flipCamera}
-              disabled={!cameraOn || flipPending}
+            <div
               style={{
-                marginTop: 8,
-                width: 44,
-                height: 44,
-                borderRadius: 12,
                 display: "flex",
+                flexDirection: "row",
                 alignItems: "center",
-                justifyContent: "center",
-                border: "none",
-                cursor: !cameraOn || flipPending ? "not-allowed" : "pointer",
-                background: "rgba(255,255,255,0.10)",
-                opacity: !cameraOn || flipPending ? 0.4 : 1,
+                gap: 4,
               }}
-              aria-label="Flip camera"
-              title="Flip camera"
             >
-              <RefreshCcw size={18} />
-            </button>
+              <button
+                onClick={flipCamera}
+                disabled={!cameraOn || flipPending}
+                style={{
+                  marginTop: 8,
+                  width: 44,
+                  height: 44,
+                  borderRadius: 12,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  border: "none",
+                  cursor: !cameraOn || flipPending ? "not-allowed" : "pointer",
+                  background: "rgba(255,255,255,0.10)",
+                  opacity: !cameraOn || flipPending ? 0.4 : 1,
+                }}
+                aria-label="Flip camera"
+                title="Flip camera"
+              >
+                <RefreshCcw size={18} />
+              </button>
 
-            <button
-              onClick={toggleCamera}
-              style={{
-                width: 56,
-                height: 56,
-                borderRadius: "50%",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                border: "none",
-                color: "var(--white)",
-                cursor: "pointer",
-                transition: "all 0.2s ease",
-                background: cameraOn
-                  ? "linear-gradient(135deg, var(--olive), var(--olive-light))"
-                  : "rgba(255,255,255,0.1)",
-                boxShadow: cameraOn
-                  ? "0 4px 16px rgba(107,142,35,0.4)"
-                  : "none",
-              }}
-            >
-              {cameraOn ? <Camera size={22} /> : <CameraOff size={22} />}
-            </button>
-            <span
-              style={{
-                color: "rgba(255,255,255,0.4)",
-                fontSize: "0.65rem",
-                fontWeight: 500,
-              }}
-            >
-              {cameraOn ? "Camera on" : "Camera"}
-            </span>
+              <button
+                onClick={toggleCamera}
+                style={{
+                  width: 56,
+                  height: 56,
+                  borderRadius: "50%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  border: "none",
+                  color: "var(--white)",
+                  cursor: "pointer",
+                  transition: "all 0.2s ease",
+                  background: cameraOn
+                    ? "linear-gradient(135deg, var(--olive), var(--olive-light))"
+                    : "rgba(255,255,255,0.1)",
+                  boxShadow: cameraOn
+                    ? "0 4px 16px rgba(107,142,35,0.4)"
+                    : "none",
+                }}
+              >
+                {cameraOn ? <Camera size={22} /> : <CameraOff size={22} />}
+              </button>
+              <span
+                style={{
+                  color: "rgba(255,255,255,0.4)",
+                  fontSize: "0.65rem",
+                  fontWeight: 500,
+                }}
+              >
+                {cameraOn ? "Camera on" : "Camera"}
+              </span>
+            </div>
           </div>
-
           {/* Mic toggle (primary, larger) */}
           <div
             style={{
