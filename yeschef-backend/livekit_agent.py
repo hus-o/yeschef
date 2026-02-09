@@ -7,6 +7,7 @@ Requires env vars: LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET, GOOGLE_API_
 """
 
 import asyncio
+import contextlib
 import json
 import logging
 import time
@@ -28,6 +29,26 @@ load_dotenv()
 
 logger = logging.getLogger("yeschef-agent")
 logger.setLevel(logging.INFO)
+
+# ---------------------------------------------------------------------------
+# Monkey-patch: suppress async generator close race in LiveKit internals
+# Upstream bug: https://github.com/livekit/agents/issues/4769
+# Safe to remove once livekit-agents ships a fix.
+# ---------------------------------------------------------------------------
+try:
+    from livekit.agents.utils.aio import itertools as _lk_itertools
+
+    _OrigTee = _lk_itertools.Tee
+
+    async def _patched_tee_aclose(self: _OrigTee) -> None:  # type: ignore[override]
+        for child in self._children:
+            with contextlib.suppress(RuntimeError):
+                await child.aclose()
+
+    _OrigTee.aclose = _patched_tee_aclose  # type: ignore[assignment]
+    logger.info("[patch] Tee.aclose() patched to suppress RuntimeError race")
+except Exception as _patch_err:
+    logger.warning(f"[patch] Could not patch Tee.aclose(): {_patch_err}")
 
 # ---------------------------------------------------------------------------
 # Agent Server
@@ -314,6 +335,24 @@ async def entrypoint(ctx: JobContext):
     # ── Frame tracker ──
 
     _frame_loop_task: asyncio.Task | None = None
+    _frame_loop_lock = asyncio.Lock()
+
+    async def _stop_frame_loop():
+        """Cancel and fully await the current frame loop task."""
+        nonlocal _frame_loop_task
+        if _frame_loop_task and not _frame_loop_task.done():
+            _frame_loop_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await _frame_loop_task
+            _frame_loop_task = None
+
+    async def _restart_frame_loop(stream: rtc.VideoStream | None):
+        """Serialised stop→start of the frame tracking loop."""
+        nonlocal _frame_loop_task
+        async with _frame_loop_lock:
+            await _stop_frame_loop()
+            if stream is not None:
+                _frame_loop_task = asyncio.create_task(_frame_loop(stream))
 
     async def _frame_loop(stream: rtc.VideoStream):
         """Track incoming video frames to detect stale feeds."""
@@ -323,7 +362,10 @@ async def entrypoint(ctx: JobContext):
         except asyncio.CancelledError:
             pass
         finally:
-            await stream.aclose()
+            # Yield control so any in-flight __anext__ settles before close
+            await asyncio.sleep(0)
+            with contextlib.suppress(RuntimeError):
+                await stream.aclose()
 
     # ── Event Handlers ──
     # Track events are the source of truth for camera state.
@@ -345,13 +387,9 @@ async def entrypoint(ctx: JobContext):
         is_muted = bool(getattr(publication, "is_muted", False))
         logger.info(f"[video] track subscribed, muted={is_muted}")
 
-        # Cancel any previous frame tracking task
-        if _frame_loop_task and not _frame_loop_task.done():
-            _frame_loop_task.cancel()
-
-        # Start frame tracking
+        # Safely restart frame tracking (cancel old → await → start new)
         video_stream = rtc.VideoStream.from_track(track=track)
-        _frame_loop_task = asyncio.create_task(_frame_loop(video_stream))
+        asyncio.create_task(_restart_frame_loop(video_stream))
 
         if not is_muted:
             request_camera_state(True)
@@ -368,10 +406,8 @@ async def entrypoint(ctx: JobContext):
         _video_track_subscribed = False
         logger.info("[video] track unsubscribed")
 
-        # Stop frame tracking
-        if _frame_loop_task and not _frame_loop_task.done():
-            _frame_loop_task.cancel()
-            _frame_loop_task = None
+        # Safely stop frame tracking (cancel → await cleanup)
+        asyncio.create_task(_restart_frame_loop(None))
 
         request_camera_state(False)
 
