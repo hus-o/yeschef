@@ -112,7 +112,7 @@ export default function Home() {
             };
             setError(
               errorMessages[job.error] ||
-                "Oops, something went wrong. Please try again later.",
+              "Oops, something went wrong. Please try again later.",
             );
           }
         } catch {
@@ -260,7 +260,7 @@ export default function Home() {
           >
             Drop any recipe link from YouTube, TikTok, Instagram, or the web.
             YesChef extracts it and guides you through cooking — step by step,
-            with voice.
+            with voice and video.
           </p>
 
           {/* ── URL Input (stacked on mobile via CSS class) ── */}
@@ -545,7 +545,7 @@ export default function Home() {
               },
               {
                 icon: <Mic size={26} color="var(--olive)" />,
-                title: "Cook with Voice",
+                title: "Cook with Voice and Video",
                 desc: "Start cooking and talk to YesChef. It guides you step by step, hands-free.",
               },
             ].map((step, i) => (
