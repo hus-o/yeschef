@@ -1,4 +1,4 @@
-import { Clock, Users, ChefHat, ArrowRight, Pause } from "lucide-react";
+import { Clock, Users, ArrowRight, Pause } from "lucide-react";
 import { useState, useEffect } from "react";
 import type { Recipe } from "../store/recipeStore";
 
@@ -83,7 +83,16 @@ export default function RecipeCard({ recipe, onClick }: RecipeCardProps) {
         }}
       >
         {!recipe.thumbnail_url && (
-          <ChefHat size={40} color="rgba(255,255,255,0.25)" />
+          <img
+            src="/logo.png"
+            alt="YesChef Logo"
+            style={{
+              height: 48,
+              opacity: 0.25,
+              objectFit: 'contain',
+              filter: 'brightness(0) invert(1)' // Make it white-ish to match previous icon feel
+            }}
+          />
         )}
 
         {/* Platform badge */}
